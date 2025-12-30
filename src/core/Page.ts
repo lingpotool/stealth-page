@@ -364,43 +364,64 @@ export class Page {
       return elements;
     }
 
-    // xpath：使用 DOM.performSearch + DOM.getSearchResults
-    const query = parsed.value;
-    const search = await this.session.send<{
-      searchId: string;
-      resultCount: number;
-    }>("DOM.performSearch", {
-      query,
-      includeUserAgentShadowDOM: true,
+    // xpath：使用 document.evaluate (参考 DrissionPage 的实现)
+    // DrissionPage 使用 JS 执行 XPath，比 DOM.performSearch 更可靠
+    
+    // 关键：必须先调用 DOM.getDocument 初始化 DOM 树，否则 DOM.requestNode 会返回 nodeId: 0
+    await this.session.send("DOM.getDocument", { depth: -1 });
+    
+    const xpath = parsed.value.replace(/'/g, "\\'");
+    const js = `
+      (function() {
+        let results = [];
+        let e = document.evaluate('${xpath}', document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+        for (let i = 0; i < e.snapshotLength; i++) {
+          let node = e.snapshotItem(i);
+          if (node.nodeType === Node.ELEMENT_NODE) {
+            results.push(node);
+          }
+        }
+        return results;
+      })()
+    `;
+
+    const { result } = await this.session.send<{ result: { objectId?: string; description?: string } }>("Runtime.evaluate", {
+      expression: js,
+      returnByValue: false,
     });
 
-    if (!search || !search.resultCount) {
+    if (!result.objectId) {
       return [];
     }
 
-    const { nodeIds } = await this.session.send<{ nodeIds: number[] }>(
-      "DOM.getSearchResults",
-      {
-        searchId: search.searchId,
-        fromIndex: 0,
-        toIndex: search.resultCount,
-      }
-    );
+    // 获取数组中的元素
+    const { result: propsResult } = await this.session.send<{ result: Array<{ name: string; value?: { objectId?: string } }> }>("Runtime.getProperties", {
+      objectId: result.objectId,
+      ownProperties: true,
+    });
 
-    // 过滤掉无效的 nodeId，并获取 backendNodeId
     const elements: Element[] = [];
-    for (const nodeId of nodeIds) {
-      if (nodeId > 0) {
-        try {
+    for (const prop of propsResult) {
+      // 跳过 length 属性和非数字索引
+      if (!prop.value?.objectId || prop.name === 'length') continue;
+      
+      try {
+        // 通过 objectId 获取 nodeId
+        const { nodeId } = await this.session.send<{ nodeId: number }>("DOM.requestNode", {
+          objectId: prop.value.objectId,
+        });
+        
+        if (nodeId > 0) {
           const { node } = await this.session.send<{ node: { backendNodeId: number } }>("DOM.describeNode", {
             nodeId,
           });
           elements.push(new Element(this.session, { nodeId, backendNodeId: node.backendNodeId }));
-        } catch {
-          // 元素可能已失效，跳过
         }
+      } catch {
+        // 跳过无效元素
       }
     }
+
     return elements;
   }
 
