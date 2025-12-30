@@ -64,9 +64,21 @@ export class Element {
   }
 
   /**
+   * 检查元素是否有效
+   */
+  isValid(): boolean {
+    return this._ref.nodeId > 0;
+  }
+
+  /**
    * 获取 objectId（供内部和 units 使用）
    */
   async getObjectId(): Promise<string> {
+    // 检查 nodeId 是否有效
+    if (this._ref.nodeId <= 0) {
+      throw new Error(`Invalid element: nodeId is ${this._ref.nodeId}. The element may not exist or was not found.`);
+    }
+
     const now = Date.now();
     if (this._objectIdCache && now - this._objectIdCacheTime < this._objectIdCacheDuration) {
       return this._objectIdCache;
@@ -79,8 +91,17 @@ export class Element {
       this._objectIdCache = object.objectId;
       this._objectIdCacheTime = now;
       return object.objectId;
-    } catch (e) {
-      throw new Error(`Element no longer exists (nodeId: ${this._ref.nodeId})`);
+    } catch (e: any) {
+      // 清除缓存
+      this._objectIdCache = null;
+      this._objectIdCacheTime = 0;
+      
+      // 提供更详细的错误信息
+      const msg = e?.message || String(e);
+      if (msg.includes("Could not find node")) {
+        throw new Error(`Element no longer exists (nodeId: ${this._ref.nodeId}). The page may have navigated or the element was removed.`);
+      }
+      throw new Error(`Element no longer exists (nodeId: ${this._ref.nodeId}): ${msg}`);
     }
   }
 

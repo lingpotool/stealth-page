@@ -40,6 +40,10 @@ export declare class Element {
      */
     setPage(page: any): void;
     /**
+     * 检查元素是否有效
+     */
+    isValid(): boolean;
+    /**
      * 获取 objectId（供内部和 units 使用）
      */
     getObjectId(): Promise<string>;

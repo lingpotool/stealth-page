@@ -346,7 +346,10 @@ export class Page {
         { nodeId: root.nodeId, selector }
       );
 
-      return nodeIds.map((nodeId) => new Element(this.session, { nodeId }));
+      // 过滤掉无效的 nodeId (0 或负数)
+      return nodeIds
+        .filter((nodeId) => nodeId > 0)
+        .map((nodeId) => new Element(this.session, { nodeId }));
     }
 
     // xpath：使用 DOM.performSearch + DOM.getSearchResults
@@ -372,7 +375,10 @@ export class Page {
       }
     );
 
-    return nodeIds.map((nodeId) => new Element(this.session, { nodeId }));
+    // 过滤掉无效的 nodeId (0 或负数)
+    return nodeIds
+      .filter((nodeId) => nodeId > 0)
+      .map((nodeId) => new Element(this.session, { nodeId }));
   }
 
   async runJs<T = any>(expression: string): Promise<T> {
