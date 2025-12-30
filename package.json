@@ -1,0 +1,52 @@
+{
+  "name": "stealth-page",
+  "version": "0.1.0",
+  "description": "Stealthy browser automation library inspired by DrissionPage. Anti-detection, simple API, TypeScript support.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "browser",
+    "automation",
+    "stealth",
+    "anti-detection",
+    "puppeteer",
+    "playwright",
+    "drissionpage",
+    "cdp",
+    "chrome",
+    "chromium",
+    "scraping",
+    "web-scraping"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lingpotool/stealth-page.git"
+  },
+  "homepage": "https://github.com/lingpotool/stealth-page#readme",
+  "bugs": {
+    "url": "https://github.com/lingpotool/stealth-page/issues"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "cheerio": "^1.0.0-rc.12",
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/ws": "^8.5.10",
+    "typescript": "^5.6.3"
+  }
+}

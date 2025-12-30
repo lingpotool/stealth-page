@@ -1,0 +1,6 @@
+src/
+test_*.js
+tsconfig.json
+.gitignore
+node_modules/
+*.log
