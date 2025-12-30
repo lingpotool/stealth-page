@@ -1298,9 +1298,10 @@ export class Element {
   }
 
   private async _getRelativeEle(direction: "east" | "west" | "north" | "south", locOrPixel?: string | number, index: number = 1): Promise<Element | null> {
-    const myRect = await this.get_rect();
-    const myCenterX = myRect.x + myRect.width / 2;
-    const myCenterY = myRect.y + myRect.height / 2;
+    // 使用视口坐标，因为 elementFromPoint 需要视口坐标
+    const myViewportLoc = await this.rect.viewport_midpoint();
+    const myCenterX = myViewportLoc.x;
+    const myCenterY = myViewportLoc.y;
     
     // 如果是像素距离
     if (typeof locOrPixel === "number") {
@@ -1340,9 +1341,9 @@ export class Element {
     for (const nodeId of nodeIds) {
       const ele = this._createElement(nodeId);
       try {
-        const rect = await ele.get_rect();
-        const centerX = rect.x + rect.width / 2;
-        const centerY = rect.y + rect.height / 2;
+        const midpoint = await ele.rect.viewport_midpoint();
+        const centerX = midpoint.x;
+        const centerY = midpoint.y;
         
         let isInDirection = false;
         let distance = 0;
