@@ -44,13 +44,21 @@ const SelectElement_1 = require("../units/SelectElement");
 const Pseudo_1 = require("../units/Pseudo");
 /**
  * 元素类，对应 DrissionPage 的 ChromiumElement
+ *
+ * 关键设计（参考 DrissionPage）：
+ * - backendNodeId: 稳定标识符，在页面生命周期内不变
+ * - nodeId: 可能会失效，可通过 backendNodeId 重新获取
+ * - objectId: JS 对象引用，可能会失效
  */
 class Element {
     constructor(session, ref, page) {
-        this._objectIdCache = null;
+        this._nodeId = 0;
+        this._objectId = null;
+        this._backendNodeId = 0;
         this._objectIdCacheTime = 0;
         this._objectIdCacheDuration = 500;
         this._page = null;
+        this._tag = null;
         // 操作对象缓存
         this._scroll = null;
         this._clicker = null;
@@ -61,15 +69,27 @@ class Element {
         this._select = null;
         this._pseudo = null;
         this._session = session;
-        this._ref = ref;
         this._page = page;
+        // 初始化 ID（参考 DrissionPage 的逻辑）
+        if (ref.nodeId && ref.nodeId > 0) {
+            this._nodeId = ref.nodeId;
+        }
+        if (ref.objectId) {
+            this._objectId = ref.objectId;
+        }
+        if (ref.backendNodeId && ref.backendNodeId > 0) {
+            this._backendNodeId = ref.backendNodeId;
+        }
     }
     // ========== 公开属性 ==========
     get session() {
         return this._session;
     }
     get nodeId() {
-        return this._ref.nodeId;
+        return this._nodeId;
+    }
+    get backendNodeId() {
+        return this._backendNodeId;
     }
     /**
      * 获取元素所属的页面对象
@@ -87,38 +107,106 @@ class Element {
      * 检查元素是否有效
      */
     isValid() {
-        return this._ref.nodeId > 0;
+        return this._nodeId > 0 || this._backendNodeId > 0 || !!this._objectId;
+    }
+    /**
+     * 刷新元素 ID（当 nodeId 失效时调用）
+     * 参考 DrissionPage 的 _refresh_id 方法
+     */
+    async refreshId() {
+        if (this._backendNodeId > 0) {
+            // 通过 backendNodeId 重新获取 objectId 和 nodeId
+            try {
+                const { object } = await this._session.send("DOM.resolveNode", {
+                    backendNodeId: this._backendNodeId,
+                });
+                this._objectId = object.objectId;
+                this._objectIdCacheTime = Date.now();
+                // 获取新的 nodeId
+                const { nodeId } = await this._session.send("DOM.requestNode", {
+                    objectId: this._objectId,
+                });
+                this._nodeId = nodeId;
+            }
+            catch (e) {
+                throw new Error(`Element no longer exists (backendNodeId: ${this._backendNodeId}): ${e?.message || e}`);
+            }
+        }
+        else {
+            throw new Error("Cannot refresh element: no backendNodeId available");
+        }
+    }
+    /**
+     * 确保有 backendNodeId（首次使用时获取）
+     */
+    async _ensureBackendNodeId() {
+        if (this._backendNodeId > 0)
+            return;
+        if (this._nodeId > 0) {
+            try {
+                const { node } = await this._session.send("DOM.describeNode", {
+                    nodeId: this._nodeId,
+                });
+                this._backendNodeId = node.backendNodeId;
+                if (node.localName) {
+                    this._tag = node.localName.toLowerCase();
+                }
+            }
+            catch (e) {
+                // 忽略错误，backendNodeId 保持为 0
+            }
+        }
     }
     /**
      * 获取 objectId（供内部和 units 使用）
      */
     async getObjectId() {
-        // 检查 nodeId 是否有效
-        if (this._ref.nodeId <= 0) {
-            throw new Error(`Invalid element: nodeId is ${this._ref.nodeId}. The element may not exist or was not found.`);
-        }
+        // 先确保有 backendNodeId
+        await this._ensureBackendNodeId();
         const now = Date.now();
-        if (this._objectIdCache && now - this._objectIdCacheTime < this._objectIdCacheDuration) {
-            return this._objectIdCache;
+        if (this._objectId && now - this._objectIdCacheTime < this._objectIdCacheDuration) {
+            return this._objectId;
         }
         try {
-            const { object } = await this._session.send("DOM.resolveNode", {
-                nodeId: this._ref.nodeId,
-            });
-            this._objectIdCache = object.objectId;
-            this._objectIdCacheTime = now;
-            return object.objectId;
+            // 优先使用 backendNodeId（更稳定）
+            if (this._backendNodeId > 0) {
+                const { object } = await this._session.send("DOM.resolveNode", {
+                    backendNodeId: this._backendNodeId,
+                });
+                this._objectId = object.objectId;
+                this._objectIdCacheTime = now;
+                return this._objectId;
+            }
+            // 回退到 nodeId
+            if (this._nodeId > 0) {
+                const { object } = await this._session.send("DOM.resolveNode", {
+                    nodeId: this._nodeId,
+                });
+                this._objectId = object.objectId;
+                this._objectIdCacheTime = now;
+                return this._objectId;
+            }
+            throw new Error("No valid ID to resolve element");
         }
         catch (e) {
             // 清除缓存
-            this._objectIdCache = null;
+            this._objectId = null;
             this._objectIdCacheTime = 0;
-            // 提供更详细的错误信息
+            // 如果有 backendNodeId，尝试刷新
+            if (this._backendNodeId > 0) {
+                try {
+                    await this.refreshId();
+                    return this._objectId;
+                }
+                catch {
+                    // 刷新也失败了
+                }
+            }
             const msg = e?.message || String(e);
             if (msg.includes("Could not find node")) {
-                throw new Error(`Element no longer exists (nodeId: ${this._ref.nodeId}). The page may have navigated or the element was removed.`);
+                throw new Error(`Element no longer exists. The page may have navigated or the element was removed.`);
             }
-            throw new Error(`Element no longer exists (nodeId: ${this._ref.nodeId}): ${msg}`);
+            throw new Error(`Element no longer exists: ${msg}`);
         }
     }
     // ========== DrissionPage 风格的操作对象属性 ==========
@@ -902,7 +990,9 @@ class Element {
     }
     // ========== 截图 ==========
     async screenshot(path) {
-        const { model } = await this._session.send("DOM.getBoxModel", { nodeId: this._ref.nodeId });
+        // 确保有 backendNodeId
+        await this._ensureBackendNodeId();
+        const { model } = await this._session.send("DOM.getBoxModel", { backendNodeId: this._backendNodeId });
         const { data } = await this._session.send("Page.captureScreenshot", {
             format: "png",
             clip: {

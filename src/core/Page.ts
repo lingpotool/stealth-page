@@ -346,10 +346,22 @@ export class Page {
         { nodeId: root.nodeId, selector }
       );
 
-      // 过滤掉无效的 nodeId (0 或负数)
-      return nodeIds
-        .filter((nodeId) => nodeId > 0)
-        .map((nodeId) => new Element(this.session, { nodeId }));
+      // 过滤掉无效的 nodeId，并获取 backendNodeId
+      const elements: Element[] = [];
+      for (const nodeId of nodeIds) {
+        if (nodeId > 0) {
+          try {
+            // 获取 backendNodeId 以便后续刷新
+            const { node } = await this.session.send<{ node: { backendNodeId: number } }>("DOM.describeNode", {
+              nodeId,
+            });
+            elements.push(new Element(this.session, { nodeId, backendNodeId: node.backendNodeId }));
+          } catch {
+            // 元素可能已失效，跳过
+          }
+        }
+      }
+      return elements;
     }
 
     // xpath：使用 DOM.performSearch + DOM.getSearchResults
@@ -375,10 +387,21 @@ export class Page {
       }
     );
 
-    // 过滤掉无效的 nodeId (0 或负数)
-    return nodeIds
-      .filter((nodeId) => nodeId > 0)
-      .map((nodeId) => new Element(this.session, { nodeId }));
+    // 过滤掉无效的 nodeId，并获取 backendNodeId
+    const elements: Element[] = [];
+    for (const nodeId of nodeIds) {
+      if (nodeId > 0) {
+        try {
+          const { node } = await this.session.send<{ node: { backendNodeId: number } }>("DOM.describeNode", {
+            nodeId,
+          });
+          elements.push(new Element(this.session, { nodeId, backendNodeId: node.backendNodeId }));
+        } catch {
+          // 元素可能已失效，跳过
+        }
+      }
+    }
+    return elements;
   }
 
   async runJs<T = any>(expression: string): Promise<T> {

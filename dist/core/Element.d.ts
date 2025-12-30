@@ -8,18 +8,27 @@ import { ElementStates } from "../units/ElementStates";
 import { SelectElement } from "../units/SelectElement";
 import { Pseudo } from "../units/Pseudo";
 export interface ElementHandleRef {
-    nodeId: number;
+    nodeId?: number;
+    objectId?: string;
+    backendNodeId?: number;
 }
 /**
  * 元素类，对应 DrissionPage 的 ChromiumElement
+ *
+ * 关键设计（参考 DrissionPage）：
+ * - backendNodeId: 稳定标识符，在页面生命周期内不变
+ * - nodeId: 可能会失效，可通过 backendNodeId 重新获取
+ * - objectId: JS 对象引用，可能会失效
  */
 export declare class Element {
     private readonly _session;
-    private readonly _ref;
-    private _objectIdCache;
+    private _nodeId;
+    private _objectId;
+    private _backendNodeId;
     private _objectIdCacheTime;
     private readonly _objectIdCacheDuration;
     private _page;
+    private _tag;
     private _scroll;
     private _clicker;
     private _wait;
@@ -31,6 +40,7 @@ export declare class Element {
     constructor(session: CDPSession, ref: ElementHandleRef, page?: any);
     get session(): CDPSession;
     get nodeId(): number;
+    get backendNodeId(): number;
     /**
      * 获取元素所属的页面对象
      */
@@ -43,6 +53,15 @@ export declare class Element {
      * 检查元素是否有效
      */
     isValid(): boolean;
+    /**
+     * 刷新元素 ID（当 nodeId 失效时调用）
+     * 参考 DrissionPage 的 _refresh_id 方法
+     */
+    refreshId(): Promise<void>;
+    /**
+     * 确保有 backendNodeId（首次使用时获取）
+     */
+    private _ensureBackendNodeId;
     /**
      * 获取 objectId（供内部和 units 使用）
      */
