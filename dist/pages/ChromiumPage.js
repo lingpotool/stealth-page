@@ -716,6 +716,8 @@ class ChromiumPage {
      */
     async active_ele() {
         await this.init();
+        // 必须先初始化 DOM 树，否则 DOM.requestNode 会返回 nodeId: 0
+        await this._page.cdpSession.send("DOM.getDocument", { depth: -1 });
         const { result } = await this._page.cdpSession.send("Runtime.evaluate", {
             expression: "document.activeElement",
         });
@@ -796,6 +798,8 @@ class ChromiumPage {
         });
         if (!result.objectId)
             return null;
+        // 必须先初始化 DOM 树
+        await this._page.cdpSession.send("DOM.getDocument", { depth: -1 });
         const { nodeId } = await this._page.cdpSession.send("DOM.requestNode", {
             objectId: result.objectId,
         });

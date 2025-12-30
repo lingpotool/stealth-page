@@ -579,6 +579,10 @@ export class ChromiumTab {
 
   async active_ele(): Promise<Element | null> {
     await this.init();
+    
+    // 必须先初始化 DOM 树，否则 DOM.requestNode 会返回 nodeId: 0
+    await this._page!.cdpSession.send("DOM.getDocument", { depth: -1 });
+    
     const { result } = await this._page!.cdpSession.send<{ result: { objectId?: string } }>("Runtime.evaluate", {
       expression: "document.activeElement",
     });
@@ -662,6 +666,9 @@ export class ChromiumTab {
     });
     
     if (!result.objectId) return null;
+    
+    // 必须先初始化 DOM 树
+    await this._page!.cdpSession.send("DOM.getDocument", { depth: -1 });
     
     const { nodeId } = await this._page!.cdpSession.send<{ nodeId: number }>("DOM.requestNode", {
       objectId: result.objectId,

@@ -117,6 +117,8 @@ class Element {
         if (this._backendNodeId > 0) {
             // 通过 backendNodeId 重新获取 objectId 和 nodeId
             try {
+                // 确保 DOM 树已初始化
+                await this._session.send("DOM.getDocument", { depth: -1 });
                 const { object } = await this._session.send("DOM.resolveNode", {
                     backendNodeId: this._backendNodeId,
                 });
@@ -156,6 +158,12 @@ class Element {
                 // 忽略错误，backendNodeId 保持为 0
             }
         }
+    }
+    /**
+     * 确保 DOM 树已初始化（在使用 DOM.requestNode 之前调用）
+     */
+    async _ensureDomTree() {
+        await this._session.send("DOM.getDocument", { depth: -1 });
     }
     /**
      * 获取 objectId（供内部和 units 使用）
@@ -620,6 +628,7 @@ class Element {
         });
         if (!result.objectId)
             return null;
+        await this._ensureDomTree();
         const { nodeId } = await this._session.send("DOM.requestNode", {
             objectId: result.objectId,
         });
@@ -646,6 +655,7 @@ class Element {
         });
         if (!result.objectId)
             return null;
+        await this._ensureDomTree();
         const { nodeId } = await this._session.send("DOM.requestNode", {
             objectId: result.objectId,
         });
@@ -699,6 +709,7 @@ class Element {
         });
         if (!result.objectId)
             return null;
+        await this._ensureDomTree();
         const { nodeId } = await this._session.send("DOM.requestNode", {
             objectId: result.objectId,
         });
@@ -749,6 +760,7 @@ class Element {
                 arguments: [{ value: direction }, { value: locator }, { value: i }],
             });
             if (sibResult.objectId) {
+                await this._ensureDomTree();
                 const { nodeId } = await this._session.send("DOM.requestNode", {
                     objectId: sibResult.objectId,
                 });
@@ -840,6 +852,7 @@ class Element {
         });
         if (!result.objectId)
             return null;
+        await this._ensureDomTree();
         const { nodeId } = await this._session.send("DOM.requestNode", {
             objectId: result.objectId,
         });
@@ -873,6 +886,8 @@ class Element {
         });
         const count = result.value;
         const elements = [];
+        // 确保 DOM 树已初始化
+        await this._ensureDomTree();
         for (let i = 0; i < count; i++) {
             const { result: elResult } = await this._session.send("Runtime.callFunctionOn", {
                 objectId,
@@ -902,6 +917,8 @@ class Element {
         });
         const count = result.value;
         const elements = [];
+        // 确保 DOM 树已初始化
+        await this._ensureDomTree();
         for (let i = 0; i < count; i++) {
             const { result: elResult } = await this._session.send("Runtime.callFunctionOn", {
                 objectId,
@@ -1102,6 +1119,7 @@ class Element {
         });
         if (!result.objectId)
             return null;
+        await this._ensureDomTree();
         const { nodeId } = await this._session.send("DOM.requestNode", {
             objectId: result.objectId,
         });
@@ -1122,6 +1140,7 @@ class Element {
         });
         if (!result.objectId)
             return null;
+        await this._ensureDomTree();
         const { nodeId } = await this._session.send("DOM.requestNode", {
             objectId: result.objectId,
         });
@@ -1159,6 +1178,7 @@ class Element {
             });
             if (!result.objectId)
                 return null;
+            await this._ensureDomTree();
             const { nodeId } = await this._session.send("DOM.requestNode", {
                 objectId: result.objectId,
             });

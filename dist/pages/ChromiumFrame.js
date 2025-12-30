@@ -172,6 +172,8 @@ class ChromiumFrame {
                 contextId: await this._getContextId(),
             });
             if (elResult.objectId) {
+                // 确保 DOM 树已初始化
+                await this._session.send("DOM.getDocument", { depth: -1 });
                 const { nodeId } = await this._session.send("DOM.requestNode", {
                     objectId: elResult.objectId,
                 });

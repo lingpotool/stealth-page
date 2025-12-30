@@ -63,6 +63,10 @@ export declare class Element {
      */
     private _ensureBackendNodeId;
     /**
+     * 确保 DOM 树已初始化（在使用 DOM.requestNode 之前调用）
+     */
+    private _ensureDomTree;
+    /**
      * 获取 objectId（供内部和 units 使用）
      */
     getObjectId(): Promise<string>;
