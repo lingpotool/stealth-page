@@ -209,11 +209,7 @@ export class ChromiumPage {
     if (parsed.type === "css") {
       nodes = $(parsed.value).toArray();
     } else {
-      // 简单文本匹配
-      nodes = $("*").toArray().filter((node: any) => {
-        const text = $(node).text();
-        return text && text.includes(locator);
-      });
+      nodes = _cheerioXPathFallback($, parsed.value);
     }
     
     const idx = index > 0 ? index - 1 : nodes.length + index;
@@ -235,10 +231,7 @@ export class ChromiumPage {
     if (parsed.type === "css") {
       nodes = $(parsed.value).toArray();
     } else {
-      nodes = $("*").toArray().filter((node: any) => {
-        const text = $(node).text();
-        return text && text.includes(locator);
-      });
+      nodes = _cheerioXPathFallback($, parsed.value);
     }
     
     return nodes.map((node: any) => new SessionElement($, node));
@@ -901,4 +894,40 @@ export class ChromiumPage {
     
     return new Element(this._page!.cdpSession, { nodeId });
   }
+}
+
+/**
+ * cheerio 不支持 XPath，对常见的 XPath 模式进行近似匹配
+ */
+function _cheerioXPathFallback($: any, xpath: string): any[] {
+  let m = xpath.match(/\/\/\*\/text\(\)\[contains\(\.,\s*"([^"]+)"\)\]\/\.\./);
+  if (m) {
+    return $("*").toArray().filter((node: any) => {
+      const text = $(node).text();
+      return text && text.includes(m![1]);
+    });
+  }
+  m = xpath.match(/\/\/\*\[text\(\)="([^"]+)"\]/);
+  if (m) {
+    return $("*").toArray().filter((node: any) => {
+      const text = $(node).clone().children().remove().end().text().trim();
+      return text === m![1];
+    });
+  }
+  m = xpath.match(/\/\/\*\[@(\w+)="([^"]+)"\]/);
+  if (m) {
+    return $(`[${m[1]}="${m[2]}"]`).toArray();
+  }
+  m = xpath.match(/\/\/\*\[contains\(@(\w+),"([^"]+)"\)\]/);
+  if (m) {
+    return $(`[${m[1]}*="${m[2]}"]`).toArray();
+  }
+  m = xpath.match(/\/\/\*\[name\(\)="(\w+)"\]/);
+  if (m) {
+    return $(m[1]).toArray();
+  }
+  if (xpath === "//*") {
+    return $("*").toArray();
+  }
+  return [];
 }

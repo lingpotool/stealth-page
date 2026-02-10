@@ -10,44 +10,80 @@ export class ChromiumPageActions {
   private _currX: number = 0;
   private _currY: number = 0;
   private _modifier: number = 0;
+  private _holding: "left" | "right" | "middle" = "left";
 
   constructor(page: ChromiumPage) {
     this._page = page;
   }
 
   /**
-   * 移动到指定坐标或元素
+   * 移动到指定坐标或元素（对齐 DrissionPage Actions.move_to）
+   * 使用视口坐标，与 Input.dispatchMouseEvent 一致
    */
-  async move_to(eleOrLoc: Element | { x: number; y: number } | string, offsetX: number = 0, offsetY: number = 0, duration: number = 0.5): Promise<this> {
-    let x: number, y: number;
+  async move_to(eleOrLoc: Element | { x: number; y: number } | string, offsetX?: number, offsetY?: number, duration: number = 0.5): Promise<this> {
+    let cx: number, cy: number;
+    const midPoint = offsetX === undefined && offsetY === undefined;
+    if (offsetX === undefined) offsetX = 0;
+    if (offsetY === undefined) offsetY = 0;
 
     if (eleOrLoc instanceof Element) {
-      const rect = await eleOrLoc.get_rect();
-      x = rect.x + rect.width / 2 + offsetX;
-      y = rect.y + rect.height / 2 + offsetY;
+      // 先滚动到可见
+      await eleOrLoc.scroll_into_view();
+      if (midPoint) {
+        const vp = await eleOrLoc.rect.viewport_midpoint();
+        cx = vp.x + offsetX;
+        cy = vp.y + offsetY;
+      } else {
+        const vp = await eleOrLoc.rect.viewport_location();
+        cx = vp.x + offsetX;
+        cy = vp.y + offsetY;
+      }
     } else if (typeof eleOrLoc === "string") {
       const ele = await this._page.ele(eleOrLoc);
       if (!ele) throw new Error(`Element not found: ${eleOrLoc}`);
-      const rect = await ele.get_rect();
-      x = rect.x + rect.width / 2 + offsetX;
-      y = rect.y + rect.height / 2 + offsetY;
+      await ele.scroll_into_view();
+      if (midPoint) {
+        const vp = await ele.rect.viewport_midpoint();
+        cx = vp.x + offsetX;
+        cy = vp.y + offsetY;
+      } else {
+        const vp = await ele.rect.viewport_location();
+        cx = vp.x + offsetX;
+        cy = vp.y + offsetY;
+      }
     } else {
-      x = eleOrLoc.x + offsetX;
-      y = eleOrLoc.y + offsetY;
+      // 传入的是页面坐标，需要转换为视口坐标
+      const page = this._page["_page"];
+      if (page) {
+        const { result } = await page.cdpSession.send<{ result: { value: { sx: number; sy: number } } }>("Runtime.evaluate", {
+          expression: `({sx: document.documentElement.scrollLeft, sy: document.documentElement.scrollTop})`,
+          returnByValue: true,
+        });
+        cx = eleOrLoc.x + offsetX - result.value.sx;
+        cy = eleOrLoc.y + offsetY - result.value.sy;
+      } else {
+        cx = eleOrLoc.x + offsetX;
+        cy = eleOrLoc.y + offsetY;
+      }
     }
 
     if (duration > 0) {
-      const steps = Math.max(1, Math.floor(duration * 20));
+      const steps = Math.max(1, Math.floor(duration * 50));
       const startX = this._currX;
       const startY = this._currY;
       for (let i = 1; i <= steps; i++) {
-        const nx = startX + ((x - startX) * i) / steps;
-        const ny = startY + ((y - startY) * i) / steps;
+        const nx = startX + ((cx - startX) * i) / steps;
+        const ny = startY + ((cy - startY) * i) / steps;
+        const t = performance.now();
         await this.move(nx, ny);
-        await new Promise(r => setTimeout(r, duration * 1000 / steps));
+        const elapsed = performance.now() - t;
+        const sleepMs = 20 - elapsed;
+        if (sleepMs > 0) {
+          await new Promise(r => setTimeout(r, sleepMs));
+        }
       }
     } else {
-      await this.move(x, y);
+      await this.move(cx, cy);
     }
 
     return this;
@@ -61,6 +97,7 @@ export class ChromiumPageActions {
     if (page) {
       await page.cdpSession.send("Input.dispatchMouseEvent", {
         type: "mouseMoved",
+        button: this._holding,
         x,
         y,
         modifiers: this._modifier,
@@ -72,10 +109,29 @@ export class ChromiumPageActions {
   }
 
   /**
-   * 相对当前位置移动
+   * 相对当前位置移动（对齐 DrissionPage Actions.move）
    */
   async move_by(offsetX: number = 0, offsetY: number = 0, duration: number = 0.5): Promise<this> {
-    return this.move_to({ x: this._currX, y: this._currY }, offsetX, offsetY, duration);
+    duration = duration < 0.02 ? 0.02 : duration;
+    const num = Math.floor(duration * 50);
+    const points: [number, number][] = [];
+    for (let i = 1; i < num; i++) {
+      points.push([
+        this._currX + i * (offsetX / num),
+        this._currY + i * (offsetY / num),
+      ]);
+    }
+    points.push([this._currX + offsetX, this._currY + offsetY]);
+
+    for (const [px, py] of points) {
+      const t = performance.now();
+      await this.move(px, py);
+      const sleepMs = 20 - (performance.now() - t);
+      if (sleepMs > 0) {
+        await new Promise(r => setTimeout(r, sleepMs));
+      }
+    }
+    return this;
   }
 
   /**
@@ -109,26 +165,15 @@ export class ChromiumPageActions {
   }
 
   private async _click(button: "left" | "right" | "middle", times: number): Promise<this> {
-    const page = this._page["_page"];
-    if (!page) return this;
-
-    for (let i = 0; i < times; i++) {
-      await page.cdpSession.send("Input.dispatchMouseEvent", {
-        type: "mousePressed",
-        x: this._currX,
-        y: this._currY,
-        button,
-        clickCount: 1,
-        modifiers: this._modifier,
-      });
-      await page.cdpSession.send("Input.dispatchMouseEvent", {
-        type: "mouseReleased",
-        x: this._currX,
-        y: this._currY,
-        button,
-        clickCount: 1,
-        modifiers: this._modifier,
-      });
+    // 对齐 DrissionPage: hold(count) + wait(.05) + release
+    await this._hold(button);
+    await new Promise(r => setTimeout(r, 50));
+    await this._release(button);
+    // 多次点击
+    for (let i = 1; i < times; i++) {
+      await this._hold(button);
+      await new Promise(r => setTimeout(r, 50));
+      await this._release(button);
     }
     return this;
   }
@@ -204,6 +249,7 @@ export class ChromiumPageActions {
         clickCount: 1,
         modifiers: this._modifier,
       });
+      this._holding = button;
     }
     return this;
   }
@@ -219,6 +265,7 @@ export class ChromiumPageActions {
         clickCount: 1,
         modifiers: this._modifier,
       });
+      this._holding = "left";
     }
     return this;
   }

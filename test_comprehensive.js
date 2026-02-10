@@ -286,14 +286,14 @@ async function runTests() {
 
   await test("ele() 在元素内CSS查找", async () => {
     const parent = await page.ele("#xpath-test");
-    const el = await parent.ele("li");
+    const el = await parent.ele("tag:li");
     const text = el ? await el.text() : null;
     return { success: text === "列表项1", expected: "列表项1", actual: text };
   });
 
   await test("eles() 在元素内CSS查找", async () => {
     const parent = await page.ele("#xpath-test");
-    const els = await parent.eles("li");
+    const els = await parent.eles("tag:li");
     return { success: els.length === 3, expected: 3, actual: els.length };
   });
 

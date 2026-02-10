@@ -1,4 +1,5 @@
 import { CDPSession } from "../core/CDPSession";
+import { ElementRect } from "./ElementRect";
 export interface ClickableElement {
     readonly session: CDPSession;
     readonly nodeId: number;
@@ -10,6 +11,7 @@ export interface ClickableElement {
         height: number;
     }>;
     scroll_into_view(): Promise<void>;
+    readonly rect: ElementRect;
 }
 /**
  * 可获取页面的元素接口（用于 for_new_tab 等方法）
@@ -38,7 +40,7 @@ export declare class ElementClicker {
      */
     left(byJs?: boolean | null, timeout?: number, waitStop?: boolean): Promise<ClickableElement | false>;
     /**
-     * 右键单击
+     * 右键单击（对齐 DrissionPage: 使用 CDP Input.dispatchMouseEvent）
      */
     right(): Promise<ClickableElement>;
     /**

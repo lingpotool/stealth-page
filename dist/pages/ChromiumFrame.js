@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ChromiumFrame = void 0;
 const Element_1 = require("../core/Element");
@@ -139,45 +172,61 @@ class ChromiumFrame {
      * 在 frame 内查找所有元素
      */
     async eles(locator) {
+        const { parseLocator } = await Promise.resolve().then(() => __importStar(require("../core/locator")));
+        const parsed = parseLocator(locator);
         const docNodeId = await this._getDocumentNodeId();
-        // 判断是 CSS 还是 XPath
-        const isXPath = locator.startsWith("//") || locator.startsWith("./") || locator.startsWith("(");
-        if (isXPath) {
-            return this._elesByXPath(locator, docNodeId);
+        if (parsed.type === "xpath") {
+            return this._elesByXPath(parsed.value, docNodeId);
         }
         // CSS 选择器
         const { nodeIds } = await this._session.send("DOM.querySelectorAll", {
             nodeId: docNodeId,
-            selector: locator,
+            selector: parsed.value,
         });
         return nodeIds.map(nodeId => new Element_1.Element(this._session, { nodeId }));
     }
     async _elesByXPath(xpath, contextNodeId) {
+        const escapedXpath = xpath.replace(/'/g, "\\'");
+        // 对齐 DrissionPage: 一次性获取所有结果
+        const js = `(() => {
+      let a=[];
+      let e=document.evaluate('${escapedXpath}',document,null,7,null);
+      for(let i=0;i<e.snapshotLength;i++){
+        let node=e.snapshotItem(i);
+        if(node.nodeType===1){a.push(node);}
+      }
+      return a;
+    })()`;
         const { result } = await this._session.send("Runtime.evaluate", {
-            expression: `(() => {
-        const result = document.evaluate(${JSON.stringify(xpath)}, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
-        return result.snapshotLength;
-      })()`,
+            expression: js,
             contextId: await this._getContextId(),
-            returnByValue: true,
+            returnByValue: false,
         });
-        const count = result.value;
+        if (!result.objectId || result.subtype === "null" || result.description === "Array(0)") {
+            return [];
+        }
+        const { result: propsResult } = await this._session.send("Runtime.getProperties", {
+            objectId: result.objectId,
+            ownProperties: true,
+        });
         const elements = [];
-        for (let i = 0; i < count; i++) {
-            const { result: elResult } = await this._session.send("Runtime.evaluate", {
-                expression: `(() => {
-          const result = document.evaluate(${JSON.stringify(xpath)}, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
-          return result.snapshotItem(${i});
-        })()`,
-                contextId: await this._getContextId(),
-            });
-            if (elResult.objectId) {
-                // 确保 DOM 树已初始化
-                await this._session.send("DOM.getDocument", { depth: -1 });
+        // 确保 DOM 树已初始化
+        await this._session.send("DOM.getDocument", { depth: -1 });
+        for (const prop of propsResult) {
+            if (prop.name === "length" || !prop.value?.objectId || isNaN(Number(prop.name)))
+                continue;
+            if (prop.value.type !== "object")
+                continue;
+            try {
                 const { nodeId } = await this._session.send("DOM.requestNode", {
-                    objectId: elResult.objectId,
+                    objectId: prop.value.objectId,
                 });
-                elements.push(new Element_1.Element(this._session, { nodeId }));
+                if (nodeId > 0) {
+                    elements.push(new Element_1.Element(this._session, { nodeId }));
+                }
+            }
+            catch {
+                // 跳过无效元素
             }
         }
         return elements;

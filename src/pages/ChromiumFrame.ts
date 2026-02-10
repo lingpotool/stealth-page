@@ -169,57 +169,71 @@ export class ChromiumFrame {
    * 在 frame 内查找所有元素
    */
   async eles(locator: string): Promise<Element[]> {
+    const { parseLocator } = await import("../core/locator");
+    const parsed = parseLocator(locator);
     const docNodeId = await this._getDocumentNodeId();
     
-    // 判断是 CSS 还是 XPath
-    const isXPath = locator.startsWith("//") || locator.startsWith("./") || locator.startsWith("(");
-    
-    if (isXPath) {
-      return this._elesByXPath(locator, docNodeId);
+    if (parsed.type === "xpath") {
+      return this._elesByXPath(parsed.value, docNodeId);
     }
     
     // CSS 选择器
     const { nodeIds } = await this._session.send<{ nodeIds: number[] }>("DOM.querySelectorAll", {
       nodeId: docNodeId,
-      selector: locator,
+      selector: parsed.value,
     });
     
     return nodeIds.map(nodeId => new Element(this._session, { nodeId }));
   }
 
   private async _elesByXPath(xpath: string, contextNodeId: number): Promise<Element[]> {
-    const { result } = await this._session.send<{ result: { value: number } }>("Runtime.evaluate", {
-      expression: `(() => {
-        const result = document.evaluate(${JSON.stringify(xpath)}, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
-        return result.snapshotLength;
-      })()`,
+    const escapedXpath = xpath.replace(/'/g, "\\'");
+    
+    // 对齐 DrissionPage: 一次性获取所有结果
+    const js = `(() => {
+      let a=[];
+      let e=document.evaluate('${escapedXpath}',document,null,7,null);
+      for(let i=0;i<e.snapshotLength;i++){
+        let node=e.snapshotItem(i);
+        if(node.nodeType===1){a.push(node);}
+      }
+      return a;
+    })()`;
+
+    const { result } = await this._session.send<{ result: { objectId?: string; subtype?: string; description?: string } }>("Runtime.evaluate", {
+      expression: js,
       contextId: await this._getContextId(),
-      returnByValue: true,
+      returnByValue: false,
     });
-    
-    const count = result.value;
+
+    if (!result.objectId || result.subtype === "null" || result.description === "Array(0)") {
+      return [];
+    }
+
+    const { result: propsResult } = await this._session.send<{ result: Array<{ name: string; value?: { objectId?: string; type?: string } }> }>("Runtime.getProperties", {
+      objectId: result.objectId,
+      ownProperties: true,
+    });
+
     const elements: Element[] = [];
-    
-    for (let i = 0; i < count; i++) {
-      const { result: elResult } = await this._session.send<{ result: { objectId?: string } }>("Runtime.evaluate", {
-        expression: `(() => {
-          const result = document.evaluate(${JSON.stringify(xpath)}, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
-          return result.snapshotItem(${i});
-        })()`,
-        contextId: await this._getContextId(),
-      });
-      
-      if (elResult.objectId) {
-        // 确保 DOM 树已初始化
-        await this._session.send("DOM.getDocument", { depth: -1 });
-        
+    // 确保 DOM 树已初始化
+    await this._session.send("DOM.getDocument", { depth: -1 });
+
+    for (const prop of propsResult) {
+      if (prop.name === "length" || !prop.value?.objectId || isNaN(Number(prop.name))) continue;
+      if (prop.value.type !== "object") continue;
+      try {
         const { nodeId } = await this._session.send<{ nodeId: number }>("DOM.requestNode", {
-          objectId: elResult.objectId,
+          objectId: prop.value.objectId,
         });
-        elements.push(new Element(this._session, { nodeId }));
+        if (nodeId > 0) {
+          elements.push(new Element(this._session, { nodeId }));
+        }
+      } catch {
+        // 跳过无效元素
       }
     }
-    
+
     return elements;
   }
 

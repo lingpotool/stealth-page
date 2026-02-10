@@ -955,85 +955,119 @@ export class Element {
   }
 
   async eles(locator: string): Promise<Element[]> {
+    const { parseLocator } = await import("./locator");
+    const parsed = parseLocator(locator);
     const objectId = await this.getObjectId();
-    
-    // 判断是 CSS 还是 XPath
-    const isXPath = locator.startsWith("//") || locator.startsWith("./") || locator.startsWith("(");
-    
-    if (isXPath) {
-      return this._elesByXPath(locator);
+
+    if (parsed.type === "xpath") {
+      // XPath：对齐 DrissionPage find_in_chromium_ele，相对路径加 .
+      let xpath = parsed.value;
+      if (xpath.startsWith("/")) {
+        xpath = "." + xpath;
+      }
+      return this._elesByXPath(xpath);
     }
-    
-    // CSS 选择器
-    const { result } = await this._session.send<{ result: { value: number } }>("Runtime.callFunctionOn", {
+
+    // CSS 选择器：对齐 DrissionPage find_by_css
+    const selector = parsed.value;
+    const { result } = await this._session.send<{ result: { objectId?: string; subtype?: string; description?: string } }>("Runtime.callFunctionOn", {
       objectId,
-      functionDeclaration: `function(selector) { return this.querySelectorAll(selector).length; }`,
-      arguments: [{ value: locator }],
-      returnByValue: true,
+      functionDeclaration: `function(sel) { return this.querySelectorAll(sel); }`,
+      arguments: [{ value: selector }],
+      returnByValue: false,
     });
-    
-    const count = result.value;
+
+    if (!result.objectId || result.subtype === "null" || result.description === "NodeList(0)") {
+      return [];
+    }
+
+    // 获取 NodeList 中的所有元素
+    const { result: propsResult } = await this._session.send<{ result: Array<{ name: string; value?: { objectId?: string; type?: string } }> }>("Runtime.getProperties", {
+      objectId: result.objectId,
+      ownProperties: true,
+    });
+
     const elements: Element[] = [];
-    
-    // 确保 DOM 树已初始化
     await this._ensureDomTree();
-    
-    for (let i = 0; i < count; i++) {
-      const { result: elResult } = await this._session.send<{ result: { objectId?: string } }>("Runtime.callFunctionOn", {
-        objectId,
-        functionDeclaration: `function(selector, idx) { return this.querySelectorAll(selector)[idx]; }`,
-        arguments: [{ value: locator }, { value: i }],
-      });
-      
-      if (elResult.objectId) {
+
+    for (const prop of propsResult) {
+      if (!prop.value?.objectId || prop.name === "length" || prop.value.type !== "object") continue;
+      try {
         const { nodeId } = await this._session.send<{ nodeId: number }>("DOM.requestNode", {
-          objectId: elResult.objectId,
+          objectId: prop.value.objectId,
         });
-        elements.push(this._createElement(nodeId));
+        if (nodeId > 0) {
+          elements.push(this._createElement(nodeId));
+        }
+      } catch {
+        // 跳过无效元素
       }
     }
-    
+
     return elements;
   }
 
   private async _elesByXPath(xpath: string): Promise<Element[]> {
     const objectId = await this.getObjectId();
-    
-    // 使用 document.evaluate 在元素内查找
-    const { result } = await this._session.send<{ result: { value: number } }>("Runtime.callFunctionOn", {
+    const escapedXpath = xpath.replace(/'/g, "\\'");
+
+    // 对齐 DrissionPage: 使用 Runtime.callFunctionOn + document.evaluate，一次性获取所有结果
+    const js = `function(){
+      let a=[];
+      let e=document.evaluate('${escapedXpath}',this,null,7,null);
+      for(let i=0;i<e.snapshotLength;i++){
+        let node=e.snapshotItem(i);
+        if(node.nodeType===1){a.push(node);}
+        else if(node.constructor.name==="Text"){a.push(node.data);}
+        else if(node.constructor.name==="Attr"){a.push(node.nodeValue);}
+      }
+      return a;
+    }`;
+
+    const { result } = await this._session.send<{ result: { objectId?: string; subtype?: string; description?: string } }>("Runtime.callFunctionOn", {
       objectId,
-      functionDeclaration: `function(xpath) {
-        const result = document.evaluate(xpath, this, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
-        return result.snapshotLength;
-      }`,
-      arguments: [{ value: xpath }],
-      returnByValue: true,
+      functionDeclaration: js,
+      returnByValue: false,
+      awaitPromise: true,
+      userGesture: true,
     });
-    
-    const count = result.value;
+
+    if (!result.objectId || result.subtype === "null") {
+      return [];
+    }
+
+    // 检查是否为空数组
+    if (result.description === "Array(0)") {
+      return [];
+    }
+
+    const { result: propsResult } = await this._session.send<{ result: Array<{ name: string; value?: { objectId?: string; type?: string; value?: any } }> }>("Runtime.getProperties", {
+      objectId: result.objectId,
+      ownProperties: true,
+    });
+
     const elements: Element[] = [];
-    
-    // 确保 DOM 树已初始化
     await this._ensureDomTree();
-    
-    for (let i = 0; i < count; i++) {
-      const { result: elResult } = await this._session.send<{ result: { objectId?: string } }>("Runtime.callFunctionOn", {
-        objectId,
-        functionDeclaration: `function(xpath, idx) {
-          const result = document.evaluate(xpath, this, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
-          return result.snapshotItem(idx);
-        }`,
-        arguments: [{ value: xpath }, { value: i }],
-      });
-      
-      if (elResult.objectId) {
-        const { nodeId } = await this._session.send<{ nodeId: number }>("DOM.requestNode", {
-          objectId: elResult.objectId,
-        });
-        elements.push(this._createElement(nodeId));
+
+    for (const prop of propsResult) {
+      if (prop.name === "length" || !prop.value) continue;
+      // 跳过非数字索引
+      if (isNaN(Number(prop.name))) continue;
+
+      if (prop.value.objectId && prop.value.type === "object") {
+        try {
+          const { nodeId } = await this._session.send<{ nodeId: number }>("DOM.requestNode", {
+            objectId: prop.value.objectId,
+          });
+          if (nodeId > 0) {
+            elements.push(this._createElement(nodeId));
+          }
+        } catch {
+          // 跳过无效元素
+        }
       }
     }
-    
+
     return elements;
   }
 
@@ -1041,7 +1075,6 @@ export class Element {
    * 以 SessionElement 形式返回元素（高效处理复杂页面）
    */
   async s_ele(locator: string, index: number = 1): Promise<any> {
-    // 获取元素的 HTML，然后用 cheerio 解析
     const html = await this.html;
     const { load } = await import("cheerio");
     const { SessionElement } = await import("./SessionElement");
@@ -1054,11 +1087,9 @@ export class Element {
     if (parsed.type === "css") {
       nodes = $(parsed.value).toArray();
     } else {
-      // 简单文本匹配
-      nodes = $("*").toArray().filter((node: any) => {
-        const text = $(node).text();
-        return text && text.includes(locator);
-      });
+      // cheerio 不支持 XPath，使用 :contains 等近似匹配
+      // 对于文本搜索类的 XPath，提取文本内容进行匹配
+      nodes = _cheerioXPathFallback($, parsed.value);
     }
     
     const idx = index > 0 ? index - 1 : nodes.length + index;
@@ -1082,10 +1113,7 @@ export class Element {
     if (parsed.type === "css") {
       nodes = $(parsed.value).toArray();
     } else {
-      nodes = $("*").toArray().filter((node: any) => {
-        const text = $(node).text();
-        return text && text.includes(locator);
-      });
+      nodes = _cheerioXPathFallback($, parsed.value);
     }
     
     return nodes.map((node: any) => new SessionElement($, node));
@@ -1095,22 +1123,34 @@ export class Element {
 
   async run_js(script: string, ...args: any[]): Promise<any> {
     const objectId = await this.getObjectId();
+    // 对齐 DrissionPage: 如果不是函数形式，包装成函数
+    let funcDecl = script.trim();
+    if (!funcDecl.startsWith("function") && !funcDecl.startsWith("(") && !funcDecl.startsWith("async")) {
+      funcDecl = `function(){${funcDecl}}`;
+    }
     const { result } = await this._session.send<{ result: { value: any } }>("Runtime.callFunctionOn", {
       objectId,
-      functionDeclaration: `function() { ${script} }`,
+      functionDeclaration: funcDecl,
       arguments: args.map(a => ({ value: a })),
       returnByValue: true,
+      awaitPromise: true,
+      userGesture: true,
     });
     return result.value;
   }
 
   async run_async_js(script: string, ...args: any[]): Promise<void> {
     const objectId = await this.getObjectId();
+    let funcDecl = script.trim();
+    if (!funcDecl.startsWith("function") && !funcDecl.startsWith("(") && !funcDecl.startsWith("async")) {
+      funcDecl = `function(){${funcDecl}}`;
+    }
     await this._session.send("Runtime.callFunctionOn", {
       objectId,
-      functionDeclaration: `function() { ${script} }`,
+      functionDeclaration: funcDecl,
       arguments: args.map(a => ({ value: a })),
       awaitPromise: false,
+      userGesture: true,
     });
   }
 
@@ -1380,4 +1420,54 @@ export class Element {
     
     return candidates[index - 1]?.ele ?? null;
   }
+}
+
+/**
+ * cheerio 不支持 XPath，对常见的 XPath 模式进行近似匹配
+ * 主要处理 DrissionPage 生成的文本搜索和属性搜索 XPath
+ */
+function _cheerioXPathFallback($: any, xpath: string): any[] {
+  // 文本包含: //*/text()[contains(., "xxx")]/..
+  let m = xpath.match(/\/\/\*\/text\(\)\[contains\(\.,\s*"([^"]+)"\)\]\/\.\./);
+  if (m) {
+    return $("*").toArray().filter((node: any) => {
+      const text = $(node).text();
+      return text && text.includes(m![1]);
+    });
+  }
+
+  // 精确文本: //*[text()="xxx"]
+  m = xpath.match(/\/\/\*\[text\(\)="([^"]+)"\]/);
+  if (m) {
+    return $("*").toArray().filter((node: any) => {
+      const text = $(node).clone().children().remove().end().text().trim();
+      return text === m![1];
+    });
+  }
+
+  // 属性精确: //*[@attr="val"]
+  m = xpath.match(/\/\/\*\[@(\w+)="([^"]+)"\]/);
+  if (m) {
+    return $(`[${m[1]}="${m[2]}"]`).toArray();
+  }
+
+  // 属性包含: //*[contains(@attr,"val")]
+  m = xpath.match(/\/\/\*\[contains\(@(\w+),"([^"]+)"\)\]/);
+  if (m) {
+    return $(`[${m[1]}*="${m[2]}"]`).toArray();
+  }
+
+  // tag name: //*[name()="div"]
+  m = xpath.match(/\/\/\*\[name\(\)="(\w+)"\]/);
+  if (m) {
+    return $(m[1]).toArray();
+  }
+
+  // 通配符
+  if (xpath === "//*") {
+    return $("*").toArray();
+  }
+
+  // 无法解析的 XPath，返回空
+  return [];
 }

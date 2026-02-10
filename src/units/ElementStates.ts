@@ -109,7 +109,7 @@ export class ElementStates {
         functionDeclaration: `function() {
           if (!this) return false;
           const style = window.getComputedStyle(this);
-          return style.display !== 'none' && style.visibility !== 'hidden' && this.offsetParent !== null;
+          return style.visibility !== 'hidden' && style.display !== 'none' && !this.hidden;
         }`,
         returnByValue: true,
       });
@@ -209,7 +209,15 @@ export class ElementStates {
       const displayed = await this._checkDisplayed();
       const enabled = await this._checkEnabled();
       const hasRect = await this._checkHasRect();
-      return displayed && enabled && hasRect;
+      if (!displayed || !enabled || !hasRect) return false;
+      // 对齐 DrissionPage: 还要检查 pointer-events
+      const objectId = await this._ele.getObjectId();
+      const { result } = await this._ele.session.send<{ result: { value: string } }>("Runtime.callFunctionOn", {
+        objectId,
+        functionDeclaration: `function() { return window.getComputedStyle(this).pointerEvents; }`,
+        returnByValue: true,
+      });
+      return result.value !== "none";
     } catch {
       return false;
     }

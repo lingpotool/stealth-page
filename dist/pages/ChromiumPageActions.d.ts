@@ -8,9 +8,11 @@ export declare class ChromiumPageActions {
     private _currX;
     private _currY;
     private _modifier;
+    private _holding;
     constructor(page: ChromiumPage);
     /**
-     * 移动到指定坐标或元素
+     * 移动到指定坐标或元素（对齐 DrissionPage Actions.move_to）
+     * 使用视口坐标，与 Input.dispatchMouseEvent 一致
      */
     move_to(eleOrLoc: Element | {
         x: number;
@@ -21,7 +23,7 @@ export declare class ChromiumPageActions {
      */
     move(x: number, y: number): Promise<this>;
     /**
-     * 相对当前位置移动
+     * 相对当前位置移动（对齐 DrissionPage Actions.move）
      */
     move_by(offsetX?: number, offsetY?: number, duration?: number): Promise<this>;
     /**

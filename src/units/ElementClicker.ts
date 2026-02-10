@@ -1,4 +1,5 @@
 import { CDPSession } from "../core/CDPSession";
+import { ElementRect } from "./ElementRect";
 
 export interface ClickableElement {
   readonly session: CDPSession;
@@ -6,6 +7,7 @@ export interface ClickableElement {
   getObjectId(): Promise<string>;
   get_rect(): Promise<{ x: number; y: number; width: number; height: number }>;
   scroll_into_view(): Promise<void>;
+  readonly rect: ElementRect;
 }
 
 /**
@@ -65,19 +67,13 @@ export class ElementClicker {
   }
 
   /**
-   * 右键单击
+   * 右键单击（对齐 DrissionPage: 使用 CDP Input.dispatchMouseEvent）
    */
   async right(): Promise<ClickableElement> {
-    const objectId = await this._ele.getObjectId();
-    await this._ele.session.send("Runtime.callFunctionOn", {
-      objectId,
-      functionDeclaration: `function() {
-        if (this) {
-          const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
-          this.dispatchEvent(event);
-        }
-      }`,
-    });
+    await this._ele.scroll_into_view();
+    const rect = await this._ele.rect;
+    const { x, y } = await rect.viewport_click_point();
+    await this._click(x, y, "right");
     return this._ele;
   }
 
@@ -86,9 +82,8 @@ export class ElementClicker {
    * @param getTab 是否返回新tab对象，为false则返回null
    */
   async middle(getTab: boolean = true): Promise<any> {
-    const rect = await this._ele.get_rect();
-    const x = rect.x + rect.width / 2;
-    const y = rect.y + rect.height / 2;
+    await this._ele.scroll_into_view();
+    const vp = await this._ele.rect.viewport_click_point();
 
     // 记录当前 tab 数量
     let tabsBefore: string[] = [];
@@ -97,20 +92,7 @@ export class ElementClicker {
       tabsBefore = page.browser.tab_ids || [];
     }
 
-    await this._ele.session.send("Input.dispatchMouseEvent", {
-      type: "mousePressed",
-      x,
-      y,
-      button: "middle",
-      clickCount: 1,
-    });
-    await this._ele.session.send("Input.dispatchMouseEvent", {
-      type: "mouseReleased",
-      x,
-      y,
-      button: "middle",
-      clickCount: 1,
-    });
+    await this._click(vp.x, vp.y, "middle");
 
     if (getTab && page?.browser) {
       // 等待新 tab 出现
@@ -133,10 +115,15 @@ export class ElementClicker {
    * @param count 点击次数
    */
   async at(offsetX?: number, offsetY?: number, button: "left" | "right" | "middle" | "back" | "forward" = "left", count: number = 1): Promise<ClickableElement> {
-    const rect = await this._ele.get_rect();
-    const x = offsetX !== undefined ? rect.x + offsetX : rect.x + rect.width / 2;
-    const y = offsetY !== undefined ? rect.y + offsetY : rect.y + rect.height / 2;
-
+    await this._ele.scroll_into_view();
+    if (offsetX === undefined && offsetY === undefined) {
+      const sz = await this._ele.rect.size();
+      offsetX = Math.floor(sz.width / 2);
+      offsetY = Math.floor(sz.height / 2);
+    }
+    const vp = await this._ele.rect.viewport_location();
+    const x = vp.x + (offsetX ?? 0);
+    const y = vp.y + (offsetY ?? 0);
     await this._click(x, y, button, count);
     return this._ele;
   }
@@ -408,24 +395,8 @@ export class ElementClicker {
    */
   private async _clickByMouse(): Promise<boolean> {
     await this._ele.scroll_into_view();
-    const rect = await this._ele.get_rect();
-    const x = rect.x + rect.width / 2;
-    const y = rect.y + rect.height / 2;
-
-    await this._ele.session.send("Input.dispatchMouseEvent", {
-      type: "mousePressed",
-      x,
-      y,
-      button: "left",
-      clickCount: 1,
-    });
-    await this._ele.session.send("Input.dispatchMouseEvent", {
-      type: "mouseReleased",
-      x,
-      y,
-      button: "left",
-      clickCount: 1,
-    });
+    const vp = await this._ele.rect.viewport_click_point();
+    await this._click(vp.x, vp.y, "left");
     return true;
   }
 
