@@ -19,6 +19,7 @@ class ChromiumOptions {
         this.retryTimes = 3;
         this.retryInterval = 2;
         this.loadMode = "normal";
+        this._proxy = "";
         this.downloadFileName = null;
         this.downloadFileSuffix = null;
         this.whenDownloadFileExists = "rename";
@@ -122,6 +123,26 @@ class ChromiumOptions {
     }
     set_user_data_path(path) {
         this.userDataPath = path;
+        return this;
+    }
+    /**
+     * 获取当前代理设置
+     */
+    get proxy() {
+        return this._proxy;
+    }
+    /**
+     * 设置代理（对齐 DrissionPage ChromiumOptions.set_proxy）
+     * 通过 --proxy-server 启动参数设置
+     * @param proxy 代理地址，如 "http://127.0.0.1:8080"
+     */
+    set_proxy(proxy) {
+        this._proxy = proxy;
+        // 先移除旧的 proxy-server 参数
+        this.arguments = this.arguments.filter((a) => !a.startsWith("--proxy-server"));
+        if (proxy) {
+            this.set_argument(`--proxy-server=${proxy}`);
+        }
         return this;
     }
     add_extension(path) {

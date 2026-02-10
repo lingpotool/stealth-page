@@ -33,6 +33,7 @@ export declare class ChromiumOptions {
     retryTimes: number;
     retryInterval: number;
     loadMode: string;
+    private _proxy;
     downloadFileName: string | null;
     downloadFileSuffix: string | null;
     whenDownloadFileExists: string;
@@ -53,6 +54,16 @@ export declare class ChromiumOptions {
     set_browser_path(path: string): this;
     set_address(address: string): this;
     set_user_data_path(path: string): this;
+    /**
+     * 获取当前代理设置
+     */
+    get proxy(): string;
+    /**
+     * 设置代理（对齐 DrissionPage ChromiumOptions.set_proxy）
+     * 通过 --proxy-server 启动参数设置
+     * @param proxy 代理地址，如 "http://127.0.0.1:8080"
+     */
+    set_proxy(proxy: string): this;
     add_extension(path: string): this;
     remove_extension(path: string): this;
     set_flag(key: string, value: any): this;

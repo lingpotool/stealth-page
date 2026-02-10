@@ -682,6 +682,8 @@ opts.no_js(true);
 opts.mute(true);
 opts.set_argument('--disable-gpu');
 opts.add_extension('/path/to/ext');
+opts.set_proxy('http://127.0.0.1:8080');  // 设置代理
+opts.proxy;                                // 获取当前代理
 
 const page = new ChromiumPage(opts);
 ```
@@ -832,6 +834,23 @@ sp.close()
 
 - Node.js >= 16
 - Chrome / Chromium（以 `--remote-debugging-port` 启动）
+
+## TODO / Roadmap
+
+以下功能尚未实现，计划在未来版本中添加：
+
+- [ ] **运行时代理切换** — 通过 CDP `Fetch.enable` 实现运行时动态切换代理 IP，无需重启浏览器
+- [ ] **代理认证** — 支持带用户名密码的代理（HTTP/SOCKS5），DrissionPage 也未支持此功能
+- [ ] **代理池集成** — 内置代理池轮换机制，自动切换失效代理
+- [ ] **指纹伪装** — WebGL、Canvas、AudioContext 等浏览器指纹随机化
+- [ ] **自动启动浏览器** — 自动检测并启动 Chrome/Chromium 进程（当前需手动启动）
+- [ ] **文件上传** — `input[type=file]` 的 `set_file()` 方法
+- [ ] **拖拽操作** — `el.drag_to(target)` 元素拖拽
+- [ ] **PDF 打印** — `page.print_to_pdf()` 页面导出 PDF
+- [ ] **网络拦截/Mock** — 基于 CDP Fetch 域的请求拦截和响应修改
+- [ ] **多浏览器实例管理** — 同时管理多个独立浏览器实例
+- [ ] **自动重连** — WebSocket 断开后自动重连机制
+- [ ] **SessionPage HTTP 请求** — 完善 SessionPage 的 `get()`/`post()` 实际 HTTP 请求能力
 
 ## License
 
