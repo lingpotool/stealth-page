@@ -478,12 +478,10 @@ class ChromiumPage {
         await this.init();
         const frames = await this.get_frames();
         if (typeof locIndEle === "number") {
-            // 按序号获取
             const idx = locIndEle > 0 ? locIndEle - 1 : frames.length + locIndEle;
             const frameInfo = frames[idx];
             if (!frameInfo)
                 return null;
-            // 查找对应的 iframe 元素
             const iframes = await this.eles("iframe, frame");
             const frameEle = iframes[idx];
             if (!frameEle)
@@ -491,11 +489,28 @@ class ChromiumPage {
             return new ChromiumFrame_1.ChromiumFrame(this._page.cdpSession, frameInfo.id, frameEle);
         }
         if (locIndEle instanceof Element_1.Element) {
-            // 传入的是元素对象
+            // 尝试通过 DOM.describeNode 获取 frameId
+            await locIndEle.getObjectId();
+            const backendId = locIndEle.backendNodeId;
+            if (backendId > 0) {
+                try {
+                    const { node } = await this._page.cdpSession.send("DOM.describeNode", {
+                        backendNodeId: backendId,
+                    });
+                    if (node.frameId) {
+                        return new ChromiumFrame_1.ChromiumFrame(this._page.cdpSession, node.frameId, locIndEle);
+                    }
+                }
+                catch { /* fallback */ }
+            }
             const src = await locIndEle.attr("src");
             const name = await locIndEle.attr("name");
+            const srcdoc = await locIndEle.attr("srcdoc");
             for (const frameInfo of frames) {
                 if ((src && frameInfo.url === src) || (name && frameInfo.name === name)) {
+                    return new ChromiumFrame_1.ChromiumFrame(this._page.cdpSession, frameInfo.id, locIndEle);
+                }
+                if (srcdoc && frameInfo.url === "about:srcdoc") {
                     return new ChromiumFrame_1.ChromiumFrame(this._page.cdpSession, frameInfo.id, locIndEle);
                 }
             }
@@ -505,10 +520,28 @@ class ChromiumPage {
         const frameEle = await this.ele(locIndEle);
         if (!frameEle)
             return null;
+        // 尝试通过 DOM.describeNode 获取 frameId
+        await frameEle.getObjectId();
+        const backendId = frameEle.backendNodeId;
+        if (backendId > 0) {
+            try {
+                const { node } = await this._page.cdpSession.send("DOM.describeNode", {
+                    backendNodeId: backendId,
+                });
+                if (node.frameId) {
+                    return new ChromiumFrame_1.ChromiumFrame(this._page.cdpSession, node.frameId, frameEle);
+                }
+            }
+            catch { /* fallback */ }
+        }
         const src = await frameEle.attr("src");
         const name = await frameEle.attr("name");
+        const srcdoc = await frameEle.attr("srcdoc");
         for (const frameInfo of frames) {
             if ((src && frameInfo.url === src) || (name && frameInfo.name === name)) {
+                return new ChromiumFrame_1.ChromiumFrame(this._page.cdpSession, frameInfo.id, frameEle);
+            }
+            if (srcdoc && frameInfo.url === "about:srcdoc") {
                 return new ChromiumFrame_1.ChromiumFrame(this._page.cdpSession, frameInfo.id, frameEle);
             }
         }

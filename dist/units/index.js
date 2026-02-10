@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.PageScrollSetter = exports.LoadMode = exports.BrowserStates = exports.BrowserWaiter = exports.BrowserCookiesSetter = exports.BrowserSetter = exports.SessionPageSetter = exports.Pseudo = exports.WindowSetter = exports.PageCookiesSetter = exports.CookiesSetter = exports.ScreencastModeSetter = exports.Screencast = exports.Console = exports.PageRect = exports.PageStates = exports.PageScroller = exports.SelectElement = exports.ElementStates = exports.ElementRect = exports.ElementSetter = exports.ElementWaiter = exports.FrameScroller = exports.ElementClicker = exports.ElementScroller = void 0;
+exports.PageScrollSetter = exports.LoadMode = exports.BrowserStates = exports.BrowserWaiter = exports.BrowserCookiesSetter = exports.BrowserSetter = exports.SessionPageSetter = exports.ShadowRootStates = exports.FrameStates = exports.Pseudo = exports.WindowSetter = exports.PageCookiesSetter = exports.CookiesSetter = exports.ScreencastModeSetter = exports.Screencast = exports.Console = exports.PageRect = exports.PageStates = exports.PageScroller = exports.SelectElement = exports.ElementStates = exports.ElementRect = exports.ElementSetter = exports.ElementWaiter = exports.FrameScroller = exports.ElementClicker = exports.ElementScroller = void 0;
 var ElementScroller_1 = require("./ElementScroller");
 Object.defineProperty(exports, "ElementScroller", { enumerable: true, get: function () { return ElementScroller_1.ElementScroller; } });
 var ElementClicker_1 = require("./ElementClicker");
@@ -35,6 +35,11 @@ var WindowSetter_1 = require("./WindowSetter");
 Object.defineProperty(exports, "WindowSetter", { enumerable: true, get: function () { return WindowSetter_1.WindowSetter; } });
 var Pseudo_1 = require("./Pseudo");
 Object.defineProperty(exports, "Pseudo", { enumerable: true, get: function () { return Pseudo_1.Pseudo; } });
+// Frame 相关
+var FrameStates_1 = require("./FrameStates");
+Object.defineProperty(exports, "FrameStates", { enumerable: true, get: function () { return FrameStates_1.FrameStates; } });
+var ShadowRootStates_1 = require("./ShadowRootStates");
+Object.defineProperty(exports, "ShadowRootStates", { enumerable: true, get: function () { return ShadowRootStates_1.ShadowRootStates; } });
 // Session 相关
 var SessionPageSetter_1 = require("./SessionPageSetter");
 Object.defineProperty(exports, "SessionPageSetter", { enumerable: true, get: function () { return SessionPageSetter_1.SessionPageSetter; } });

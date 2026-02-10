@@ -111,6 +111,14 @@ class Element {
         return this._nodeId > 0 || this._backendNodeId > 0 || !!this._objectId;
     }
     /**
+     * 比较两个元素是否相同（对齐 DrissionPage __eq__: 通过 backendNodeId 比较）
+     */
+    equals(other) {
+        if (!other)
+            return false;
+        return this._backendNodeId > 0 && this._backendNodeId === other.backendNodeId;
+    }
+    /**
      * 刷新元素 ID（当 nodeId 失效时调用）
      * 参考 DrissionPage 的 _refresh_id 方法
      */

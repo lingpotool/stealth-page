@@ -37,6 +37,8 @@ export * from "./units/Screencast";
 export * from "./units/CookiesSetter";
 export * from "./units/WindowSetter";
 export * from "./units/Pseudo";
+export * from "./units/FrameStates";
+export * from "./units/ShadowRootStates";
 export * from "./units/SessionPageSetter";
 export * from "./units/BrowserSetter";
 export * from "./units/BrowserCookiesSetter";

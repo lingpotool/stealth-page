@@ -14,6 +14,8 @@ export { Screencast, ScreencastModeSetter, ScreencastPage, ScreencastMode } from
 export { CookiesSetter, PageCookiesSetter, CookieData, CookiesPage } from "./CookiesSetter";
 export { WindowSetter, WindowBounds, WindowPage } from "./WindowSetter";
 export { Pseudo, PseudoElement } from "./Pseudo";
+export { FrameStates, FrameLike } from "./FrameStates";
+export { ShadowRootStates, ShadowRootLike } from "./ShadowRootStates";
 export { SessionPageSetter } from "./SessionPageSetter";
 export { BrowserSetter } from "./BrowserSetter";
 export { BrowserCookiesSetter, BrowserCookieData } from "./BrowserCookiesSetter";

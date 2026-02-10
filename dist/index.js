@@ -54,6 +54,8 @@ __exportStar(require("./units/Screencast"), exports);
 __exportStar(require("./units/CookiesSetter"), exports);
 __exportStar(require("./units/WindowSetter"), exports);
 __exportStar(require("./units/Pseudo"), exports);
+__exportStar(require("./units/FrameStates"), exports);
+__exportStar(require("./units/ShadowRootStates"), exports);
 // Session 相关
 __exportStar(require("./units/SessionPageSetter"), exports);
 // Browser 相关

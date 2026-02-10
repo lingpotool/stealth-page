@@ -15,6 +15,10 @@ export { CookiesSetter, PageCookiesSetter, CookieData, CookiesPage } from "./Coo
 export { WindowSetter, WindowBounds, WindowPage } from "./WindowSetter";
 export { Pseudo, PseudoElement } from "./Pseudo";
 
+// Frame 相关
+export { FrameStates, FrameLike } from "./FrameStates";
+export { ShadowRootStates, ShadowRootLike } from "./ShadowRootStates";
+
 // Session 相关
 export { SessionPageSetter } from "./SessionPageSetter";
 

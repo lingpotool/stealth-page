@@ -40,6 +40,8 @@ export * from "./units/Screencast";
 export * from "./units/CookiesSetter";
 export * from "./units/WindowSetter";
 export * from "./units/Pseudo";
+export * from "./units/FrameStates";
+export * from "./units/ShadowRootStates";
 
 // Session 相关
 export * from "./units/SessionPageSetter";

@@ -1095,6 +1095,82 @@ async function runTests() {
     return { success: pos.x >= 0 && pos.y >= 0, expected: "x>=0, y>=0", actual: `x=${pos.x}, y=${pos.y}` };
   });
 
+  // ========== 43. ShadowRootStates ==========
+  console.log("\n【43. ShadowRootStates】");
+
+  await test("ShadowRoot.states.is_alive 存活", async () => {
+    const host = await page.ele("#shadow-host");
+    if (!host) return { success: false, expected: "host元素", actual: "null" };
+    const sr = await host.sr;
+    if (!sr) return { success: false, expected: "ShadowRoot", actual: "null" };
+    const alive = await sr.states.is_alive;
+    return { success: alive === true, expected: true, actual: alive };
+  });
+
+  await test("ShadowRoot.states.is_enabled 可用", async () => {
+    const host = await page.ele("#shadow-host");
+    if (!host) return { success: false, expected: "host元素", actual: "null" };
+    const sr = await host.sr;
+    if (!sr) return { success: false, expected: "ShadowRoot", actual: "null" };
+    const enabled = await sr.states.is_enabled;
+    return { success: enabled === true, expected: true, actual: enabled };
+  });
+
+  // ========== 44. Element.equals() ==========
+  console.log("\n【44. Element.equals()】");
+
+  await test("equals() 相同元素返回 true", async () => {
+    const el1 = await page.ele("#title");
+    const el2 = await page.ele("#title");
+    if (!el1 || !el2) return { success: false, expected: "两个元素", actual: "null" };
+    const eq = el1.equals(el2);
+    return { success: eq === true, expected: true, actual: eq };
+  });
+
+  await test("equals() 不同元素返回 false", async () => {
+    const el1 = await page.ele("#title");
+    const el2 = await page.ele("#btn");
+    if (!el1 || !el2) return { success: false, expected: "两个元素", actual: "null" };
+    const eq = el1.equals(el2);
+    return { success: eq === false, expected: false, actual: eq };
+  });
+
+  await test("equals(null) 返回 false", async () => {
+    const el = await page.ele("#title");
+    if (!el) return { success: false, expected: "元素", actual: "null" };
+    const eq = el.equals(null);
+    return { success: eq === false, expected: false, actual: eq };
+  });
+
+  // ========== 45. FrameStates ==========
+  console.log("\n【45. FrameStates】");
+
+  await test("get_frame() 获取 iframe", async () => {
+    const frame = await page.get_frame("#test-frame");
+    return { success: frame !== null, expected: "ChromiumFrame", actual: frame ? "ChromiumFrame" : "null" };
+  });
+
+  await test("FrameStates.is_alive 存活", async () => {
+    const frame = await page.get_frame("#test-frame");
+    if (!frame) return { success: false, expected: "frame", actual: "null" };
+    const alive = await frame.states.is_alive;
+    return { success: alive === true, expected: true, actual: alive };
+  });
+
+  await test("FrameStates.is_displayed 可见", async () => {
+    const frame = await page.get_frame("#test-frame");
+    if (!frame) return { success: false, expected: "frame", actual: "null" };
+    const displayed = await frame.states.is_displayed;
+    return { success: displayed === true, expected: true, actual: displayed };
+  });
+
+  await test("FrameStates.ready_state 就绪状态", async () => {
+    const frame = await page.get_frame("#test-frame");
+    if (!frame) return { success: false, expected: "frame", actual: "null" };
+    const state = await frame.states.ready_state;
+    return { success: state === "complete", expected: "complete", actual: state };
+  });
+
   // ========== 结果汇总 ==========
   console.log("\n═══════════════════════════════════════════════════════════");
   console.log("                    测试结果汇总");

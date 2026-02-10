@@ -1,5 +1,6 @@
 import { CDPSession } from "./CDPSession";
 import { Element } from "./Element";
+import { ShadowRootStates } from "../units/ShadowRootStates";
 /**
  * ShadowRoot 类，对应 DrissionPage 的 ShadowRoot
  * 用于操作 Shadow DOM 内的元素
@@ -11,6 +12,7 @@ export declare class ShadowRoot {
     private _objectId;
     private _nodeId;
     private _page;
+    private _states;
     constructor(parentEle: Element, opts?: {
         objId?: string;
         backendId?: number;
@@ -18,6 +20,10 @@ export declare class ShadowRoot {
     get session(): CDPSession;
     get parent_ele(): Element;
     get tag(): string;
+    /**
+     * 状态检查对象
+     */
+    get states(): ShadowRootStates;
     get backendNodeId(): number;
     /**
      * 获取 shadow root 的 innerHTML

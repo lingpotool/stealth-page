@@ -451,10 +451,28 @@ class ChromiumTab {
             return new ChromiumFrame_1.ChromiumFrame(this._page.cdpSession, frameInfo.id, frameEle);
         }
         if (locIndEle instanceof Element_1.Element) {
+            // 尝试通过 DOM.describeNode 获取 frameId
+            await locIndEle.getObjectId();
+            const backendId = locIndEle.backendNodeId;
+            if (backendId > 0) {
+                try {
+                    const { node } = await this._page.cdpSession.send("DOM.describeNode", {
+                        backendNodeId: backendId,
+                    });
+                    if (node.frameId) {
+                        return new ChromiumFrame_1.ChromiumFrame(this._page.cdpSession, node.frameId, locIndEle);
+                    }
+                }
+                catch { /* fallback */ }
+            }
             const src = await locIndEle.attr("src");
             const name = await locIndEle.attr("name");
+            const srcdoc = await locIndEle.attr("srcdoc");
             for (const frameInfo of frames) {
                 if ((src && frameInfo.url === src) || (name && frameInfo.name === name)) {
+                    return new ChromiumFrame_1.ChromiumFrame(this._page.cdpSession, frameInfo.id, locIndEle);
+                }
+                if (srcdoc && frameInfo.url === "about:srcdoc") {
                     return new ChromiumFrame_1.ChromiumFrame(this._page.cdpSession, frameInfo.id, locIndEle);
                 }
             }
@@ -465,8 +483,28 @@ class ChromiumTab {
             return null;
         const src = await frameEle.attr("src");
         const name = await frameEle.attr("name");
+        const srcdoc = await frameEle.attr("srcdoc");
+        // 获取 frame 元素的 backendNodeId 用于精确匹配
+        await frameEle.getObjectId(); // 确保有 backendNodeId
+        const backendId = frameEle.backendNodeId;
+        // 尝试通过 DOM.describeNode 获取 frameId
+        if (backendId > 0) {
+            try {
+                const { node } = await this._page.cdpSession.send("DOM.describeNode", {
+                    backendNodeId: backendId,
+                });
+                if (node.frameId) {
+                    return new ChromiumFrame_1.ChromiumFrame(this._page.cdpSession, node.frameId, frameEle);
+                }
+            }
+            catch { /* fallback */ }
+        }
         for (const frameInfo of frames) {
             if ((src && frameInfo.url === src) || (name && frameInfo.name === name)) {
+                return new ChromiumFrame_1.ChromiumFrame(this._page.cdpSession, frameInfo.id, frameEle);
+            }
+            // srcdoc iframe 的 URL 通常是 about:srcdoc
+            if (srcdoc && frameInfo.url === "about:srcdoc") {
                 return new ChromiumFrame_1.ChromiumFrame(this._page.cdpSession, frameInfo.id, frameEle);
             }
         }

@@ -1,7 +1,7 @@
 import { CDPSession } from "../core/CDPSession";
 import { Element } from "../core/Element";
 import { FrameScroller } from "../units/FrameScroller";
-import { PageStates } from "../units/PageStates";
+import { FrameStates } from "../units/FrameStates";
 import { PageRect } from "../units/PageRect";
 
 /**
@@ -24,7 +24,7 @@ export class ChromiumFrame {
   private readonly _frameEle: Element;
   private _documentNodeId: number | null = null;
   private _scroller: FrameScroller | null = null;
-  private _states: PageStates | null = null;
+  private _states: FrameStates | null = null;
   private _rect: PageRect | null = null;
 
   constructor(session: CDPSession, frameId: string, frameEle: Element) {
@@ -74,9 +74,9 @@ export class ChromiumFrame {
   /**
    * 状态检查对象
    */
-  get states(): PageStates {
+  get states(): FrameStates {
     if (!this._states) {
-      this._states = new PageStates({ cdpSession: this._session });
+      this._states = new FrameStates(this);
     }
     return this._states;
   }

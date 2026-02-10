@@ -1,7 +1,7 @@
 import { CDPSession } from "../core/CDPSession";
 import { Element } from "../core/Element";
 import { FrameScroller } from "../units/FrameScroller";
-import { PageStates } from "../units/PageStates";
+import { FrameStates } from "../units/FrameStates";
 import { PageRect } from "../units/PageRect";
 /**
  * Frame 信息接口
@@ -48,7 +48,7 @@ export declare class ChromiumFrame {
     /**
      * 状态检查对象
      */
-    get states(): PageStates;
+    get states(): FrameStates;
     /**
      * 位置信息对象
      */

@@ -55,6 +55,10 @@ export declare class Element {
      */
     isValid(): boolean;
     /**
+     * 比较两个元素是否相同（对齐 DrissionPage __eq__: 通过 backendNodeId 比较）
+     */
+    equals(other: Element | null | undefined): boolean;
+    /**
      * 刷新元素 ID（当 nodeId 失效时调用）
      * 参考 DrissionPage 的 _refresh_id 方法
      */

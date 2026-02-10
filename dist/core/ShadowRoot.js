@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ShadowRoot = void 0;
 const Element_1 = require("./Element");
 const locator_1 = require("./locator");
+const ShadowRootStates_1 = require("../units/ShadowRootStates");
 /**
  * ShadowRoot 类，对应 DrissionPage 的 ShadowRoot
  * 用于操作 Shadow DOM 内的元素
@@ -13,6 +14,7 @@ class ShadowRoot {
         this._objectId = null;
         this._nodeId = 0;
         this._page = null;
+        this._states = null;
         this._session = parentEle.session;
         this._parentEle = parentEle;
         this._page = parentEle.getPage();
@@ -31,6 +33,15 @@ class ShadowRoot {
     }
     get tag() {
         return "shadow-root";
+    }
+    /**
+     * 状态检查对象
+     */
+    get states() {
+        if (!this._states) {
+            this._states = new ShadowRootStates_1.ShadowRootStates(this);
+        }
+        return this._states;
     }
     get backendNodeId() {
         return this._backendNodeId;

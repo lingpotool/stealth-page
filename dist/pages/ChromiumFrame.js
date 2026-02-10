@@ -36,7 +36,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ChromiumFrame = void 0;
 const Element_1 = require("../core/Element");
 const FrameScroller_1 = require("../units/FrameScroller");
-const PageStates_1 = require("../units/PageStates");
+const FrameStates_1 = require("../units/FrameStates");
 const PageRect_1 = require("../units/PageRect");
 /**
  * ChromiumFrame 类，对应 DrissionPage 的 ChromiumFrame
@@ -90,7 +90,7 @@ class ChromiumFrame {
      */
     get states() {
         if (!this._states) {
-            this._states = new PageStates_1.PageStates({ cdpSession: this._session });
+            this._states = new FrameStates_1.FrameStates(this);
         }
         return this._states;
     }

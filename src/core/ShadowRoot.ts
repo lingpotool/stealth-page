@@ -1,6 +1,7 @@
 import { CDPSession } from "./CDPSession";
 import { Element } from "./Element";
 import { parseLocator } from "./locator";
+import { ShadowRootStates } from "../units/ShadowRootStates";
 
 /**
  * ShadowRoot 类，对应 DrissionPage 的 ShadowRoot
@@ -13,6 +14,7 @@ export class ShadowRoot {
   private _objectId: string | null = null;
   private _nodeId: number = 0;
   private _page: any = null;
+  private _states: ShadowRootStates | null = null;
 
   constructor(parentEle: Element, opts?: { objId?: string; backendId?: number }) {
     this._session = parentEle.session;
@@ -37,6 +39,16 @@ export class ShadowRoot {
 
   get tag(): string {
     return "shadow-root";
+  }
+
+  /**
+   * 状态检查对象
+   */
+  get states(): ShadowRootStates {
+    if (!this._states) {
+      this._states = new ShadowRootStates(this);
+    }
+    return this._states;
   }
 
   get backendNodeId(): number {
