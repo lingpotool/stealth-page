@@ -159,7 +159,7 @@ export declare class Element {
      */
     clear(byJs?: boolean): Promise<void>;
     /**
-     * 获取焦点
+     * 获取焦点（对齐 DrissionPage: 优先使用 DOM.focus + backendNodeId）
      */
     focus(): Promise<void>;
     /**

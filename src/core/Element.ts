@@ -600,6 +600,17 @@ export class Element {
    * 输入文本
    */
   async input(value: string, clear: boolean = false, byJs: boolean = false): Promise<Element> {
+    // 对齐 DrissionPage: 自动检测 file input
+    try {
+      const tag = await this.tag_name();
+      if (tag === "input") {
+        const type = await this.attr("type");
+        if (type === "file") {
+          return this.set_file_input(value);
+        }
+      }
+    } catch { /* 忽略 */ }
+
     if (!byJs) {
       // 模拟按键方式
       await this.focus();
@@ -688,9 +699,16 @@ export class Element {
   }
 
   /**
-   * 获取焦点
+   * 获取焦点（对齐 DrissionPage: 优先使用 DOM.focus + backendNodeId）
    */
   async focus(): Promise<void> {
+    // 优先使用 CDP DOM.focus（更可靠）
+    if (this._backendNodeId > 0) {
+      try {
+        await this._session.send("DOM.focus", { backendNodeId: this._backendNodeId });
+        return;
+      } catch { /* fallback to JS */ }
+    }
     const objectId = await this.getObjectId();
     await this._session.send("Runtime.callFunctionOn", {
       objectId,
