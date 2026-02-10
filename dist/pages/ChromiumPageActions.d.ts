@@ -104,7 +104,7 @@ export declare class ChromiumPageActions {
      */
     key_up(key: string): Promise<this>;
     /**
-     * 模拟键盘输入
+     * 模拟键盘输入（对齐 DrissionPage: 支持修饰键组合）
      */
     type(keys: string | string[], interval?: number): Promise<this>;
     /**

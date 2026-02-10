@@ -44,25 +44,159 @@ export class ElementClicker {
    * @param waitStop 是否等待元素运动结束再执行点击
    */
   async left(byJs: boolean | null = false, timeout: number = 1.5, waitStop: boolean = true): Promise<ClickableElement | false> {
-    if (waitStop) {
-      await this._waitStopMoving(timeout * 1000);
-    }
-    
+    // 对齐 DrissionPage: option 标签特殊处理
+    try {
+      const objectId = await this._ele.getObjectId();
+      const { result: tagResult } = await this._ele.session.send<{ result: { value: string } }>("Runtime.callFunctionOn", {
+        objectId,
+        functionDeclaration: "function() { return this.tagName ? this.tagName.toLowerCase() : ''; }",
+        returnByValue: true,
+      });
+      if (tagResult.value === "option") {
+        // option 标签：通过 select 元素处理
+        await this._ele.session.send("Runtime.callFunctionOn", {
+          objectId,
+          functionDeclaration: "function() { this.selected = !this.selected; var s = this.closest('select'); if(s) s.dispatchEvent(new Event('change', {bubbles:true})); }",
+        });
+        return this._ele;
+      }
+    } catch { /* 忽略 */ }
+
     if (byJs === true) {
       await this._clickByJs();
       return this._ele;
     }
-    
-    if (byJs === null) {
-      // 先尝试模拟点击，遇到遮挡改用 js
-      const success = await this._clickByMouse();
-      if (!success) {
-        await this._clickByJs();
+
+    // 模拟点击流程（对齐 DrissionPage）
+    {
+      let canClick = false;
+      const timeoutMs = (timeout ?? 1.5) * 1000;
+      const deadline = Date.now() + timeoutMs;
+
+      // 等待元素有大小
+      let hasRect = false;
+      try {
+        const rect = await this._ele.get_rect();
+        hasRect = rect.width > 0 && rect.height > 0;
+      } catch { /* no rect */ }
+
+      if (timeoutMs > 0) {
+        while (!hasRect && Date.now() < deadline) {
+          await new Promise(r => setTimeout(r, 10));
+          try {
+            const rect = await this._ele.get_rect();
+            hasRect = rect.width > 0 && rect.height > 0;
+          } catch { /* no rect */ }
+        }
       }
+
+      if (!hasRect) {
+        if (byJs === false) {
+          throw new Error("Element has no rect (NoRectError)");
+        }
+        // byJs === null, fallback to JS
+        await this._clickByJs();
+        return this._ele;
+      }
+
+      // 等待停止移动
+      if (waitStop) {
+        await this._waitStopMoving(Math.max(0, deadline - Date.now()));
+      }
+
+      // 滚动到可见
+      await this._ele.scroll_into_view();
+
+      // 等待 enabled + displayed
+      while (Date.now() < deadline) {
+        try {
+          const objectId = await this._ele.getObjectId();
+          const { result } = await this._ele.session.send<{ result: { value: { enabled: boolean; displayed: boolean } } }>("Runtime.callFunctionOn", {
+            objectId,
+            functionDeclaration: `function() {
+              var s = window.getComputedStyle(this);
+              return { enabled: !this.disabled, displayed: s.visibility !== 'hidden' && s.display !== 'none' && !this.hidden };
+            }`,
+            returnByValue: true,
+          });
+          if (result.value.enabled && result.value.displayed) {
+            canClick = true;
+            break;
+          }
+        } catch { /* 忽略 */ }
+        await new Promise(r => setTimeout(r, 10));
+      }
+
+      if (!canClick) {
+        if (byJs === null) {
+          await this._clickByJs();
+          return this._ele;
+        }
+        if (byJs === false) {
+          throw new Error("CanNotClickError");
+        }
+        return false;
+      }
+
+      // 检查是否在视口内
+      let inViewport = false;
+      try {
+        const objectId = await this._ele.getObjectId();
+        const { result } = await this._ele.session.send<{ result: { value: boolean } }>("Runtime.callFunctionOn", {
+          objectId,
+          functionDeclaration: `function() {
+            var r = this.getBoundingClientRect();
+            var cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+            return cx >= 0 && cy >= 0 && cx <= window.innerWidth && cy <= window.innerHeight;
+          }`,
+          returnByValue: true,
+        });
+        inViewport = result.value;
+      } catch { /* 忽略 */ }
+
+      if (!inViewport) {
+        // 不在视口内，用 JS 点击
+        await this._clickByJs();
+        return this._ele;
+      }
+
+      // 对齐 DrissionPage: 用 DOM.getNodeForLocation 检查遮挡
+      const rectObj = await this._ele.rect;
+      let vx: number, vy: number;
+      try {
+        const corners = await rectObj.viewport_corners();
+        const checkX = Math.round(corners[1].x - (corners[1].x - corners[0].x) / 2);
+        const checkY = Math.round(corners[0].y + 3);
+        const r = await this._ele.session.send<{ backendNodeId: number }>("DOM.getNodeForLocation", {
+          x: checkX,
+          y: checkY,
+          includeUserAgentShadowDOM: true,
+          ignorePointerEventsNone: true,
+        });
+        // 检查点击位置的元素是否是自己
+        const elBackendId = (this._ele as any).backendNodeId;
+        if (elBackendId && r.backendNodeId !== elBackendId) {
+          // 被遮挡，使用 midpoint
+          const mid = await rectObj.viewport_midpoint();
+          vx = mid.x;
+          vy = mid.y;
+        } else {
+          const cp = await rectObj.viewport_click_point();
+          vx = cp.x;
+          vy = cp.y;
+        }
+      } catch {
+        const mid = await rectObj.viewport_midpoint();
+        vx = mid.x;
+        vy = mid.y;
+      }
+
+      await this._click(vx, vy);
       return this._ele;
     }
-    
-    await this._clickByMouse();
+
+    // byJs is not false (should not reach here, but fallback)
+    await this._clickByJs();
     return this._ele;
   }
 

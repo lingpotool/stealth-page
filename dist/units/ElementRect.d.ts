@@ -2,6 +2,7 @@ import { CDPSession } from "../core/CDPSession";
 export interface RectableElement {
     readonly session: CDPSession;
     readonly nodeId: number;
+    readonly backendNodeId: number;
     getObjectId(): Promise<string>;
 }
 /**
@@ -53,7 +54,8 @@ export declare class ElementRect {
         y: number;
     }>;
     /**
-     * 点击点坐标（默认为中心点）
+     * 点击点坐标（页面坐标）
+     * 对齐 DrissionPage: x 取中点，y 取 padding 顶部 + 3
      */
     click_point(): Promise<{
         x: number;
@@ -89,6 +91,7 @@ export declare class ElementRect {
     }>;
     /**
      * 视口中的点击点坐标
+     * 对齐 DrissionPage: x 取 border 中点，y 取 padding 顶部 + 3
      */
     viewport_click_point(): Promise<{
         x: number;

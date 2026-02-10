@@ -1,4 +1,5 @@
 import { CDPSession } from "./CDPSession";
+import { ShadowRoot } from "./ShadowRoot";
 import { ElementScroller } from "../units/ElementScroller";
 import { ElementClicker } from "../units/ElementClicker";
 import { ElementWaiter } from "../units/ElementWaiter";
@@ -227,11 +228,11 @@ export declare class Element {
      * 创建子元素，继承 page 引用
      */
     private _createElement;
-    shadow_root(): Promise<Element | null>;
+    shadow_root(): Promise<ShadowRoot | null>;
     /**
      * shadow_root 的简写
      */
-    get sr(): Promise<Element | null>;
+    get sr(): Promise<ShadowRoot | null>;
     ele(locator: string, index?: number): Promise<Element | null>;
     eles(locator: string): Promise<Element[]>;
     private _elesByXPath;

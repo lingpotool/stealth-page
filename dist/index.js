@@ -17,6 +17,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 __exportStar(require("./core/Browser"), exports);
 __exportStar(require("./core/Page"), exports);
 __exportStar(require("./core/Element"), exports);
+__exportStar(require("./core/ShadowRoot"), exports);
 __exportStar(require("./core/CDPSession"), exports);
 __exportStar(require("./core/SessionElement"), exports);
 __exportStar(require("./core/Keys"), exports);

@@ -1,4 +1,5 @@
 import { CDPSession } from "./CDPSession";
+import { ShadowRoot } from "./ShadowRoot";
 import { ElementScroller } from "../units/ElementScroller";
 import { ElementClicker } from "../units/ElementClicker";
 import { ElementWaiter } from "../units/ElementWaiter";
@@ -1135,26 +1136,38 @@ export class Element {
 
   // ========== Shadow DOM ==========
 
-  async shadow_root(): Promise<Element | null> {
+  async shadow_root(): Promise<ShadowRoot | null> {
     const objectId = await this.getObjectId();
-    const { result } = await this._session.send<{ result: { objectId?: string } }>("Runtime.callFunctionOn", {
+    const { result } = await this._session.send<{ result: { objectId?: string; subtype?: string } }>("Runtime.callFunctionOn", {
       objectId,
       functionDeclaration: "function() { return this.shadowRoot; }",
     });
     
-    if (!result.objectId) return null;
+    if (!result.objectId || result.subtype === "null") return null;
     
+    // 获取 backendNodeId
     await this._ensureDomTree();
-    const { nodeId } = await this._session.send<{ nodeId: number }>("DOM.requestNode", {
-      objectId: result.objectId,
-    });
-    return this._createElement(nodeId);
+    try {
+      const { nodeId } = await this._session.send<{ nodeId: number }>("DOM.requestNode", {
+        objectId: result.objectId,
+      });
+      let backendId = 0;
+      if (nodeId > 0) {
+        try {
+          const desc = await this._session.send<{ node: { backendNodeId: number } }>("DOM.describeNode", { nodeId });
+          backendId = desc.node.backendNodeId;
+        } catch { /* 忽略 */ }
+      }
+      return new ShadowRoot(this, { objId: result.objectId, backendId });
+    } catch {
+      return new ShadowRoot(this, { objId: result.objectId });
+    }
   }
 
   /**
    * shadow_root 的简写
    */
-  get sr(): Promise<Element | null> {
+  get sr(): Promise<ShadowRoot | null> {
     return this.shadow_root();
   }
 

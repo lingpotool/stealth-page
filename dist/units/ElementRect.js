@@ -85,10 +85,21 @@ class ElementRect {
         return { x: loc.x + sz.width / 2, y: loc.y + sz.height / 2 };
     }
     /**
-     * 点击点坐标（默认为中心点）
+     * 点击点坐标（页面坐标）
+     * 对齐 DrissionPage: x 取中点，y 取 padding 顶部 + 3
      */
     async click_point() {
-        return this.midpoint();
+        const vp = await this.viewport_click_point();
+        try {
+            const metrics = await this._ele.session.send("Page.getLayoutMetrics");
+            return {
+                x: vp.x + metrics.visualViewport.pageX,
+                y: vp.y + metrics.visualViewport.pageY,
+            };
+        }
+        catch {
+            return this.midpoint();
+        }
     }
     /**
      * 元素四个角的坐标
@@ -142,9 +153,24 @@ class ElementRect {
     }
     /**
      * 视口中的点击点坐标
+     * 对齐 DrissionPage: x 取 border 中点，y 取 padding 顶部 + 3
      */
     async viewport_click_point() {
-        return this.viewport_midpoint();
+        try {
+            const mid = await this.viewport_midpoint();
+            // 尝试用 DOM.getBoxModel 获取 padding 区域
+            const backendId = this._ele.backendNodeId;
+            if (backendId > 0) {
+                const { model } = await this._ele.session.send("DOM.getBoxModel", { backendNodeId: backendId });
+                // padding quad: [x1,y1, x2,y2, x3,y3, x4,y4]
+                const paddingTop = model.padding[1];
+                return { x: mid.x, y: paddingTop + 3 };
+            }
+            return mid;
+        }
+        catch {
+            return this.viewport_midpoint();
+        }
     }
     /**
      * 元素滚动条位置

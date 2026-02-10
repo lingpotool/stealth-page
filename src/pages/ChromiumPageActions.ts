@@ -400,25 +400,61 @@ export class ChromiumPageActions {
   }
 
   /**
-   * 模拟键盘输入
+   * 模拟键盘输入（对齐 DrissionPage: 支持修饰键组合）
    */
   async type(keys: string | string[], interval: number = 0): Promise<this> {
     const page = this._page["_page"];
     if (!page) return this;
 
-    const chars = Array.isArray(keys) ? keys : keys.split("");
-    for (const char of chars) {
-      if (char.length === 1) {
-        await page.cdpSession.send("Input.insertText", { text: char });
-      } else {
-        // 特殊键
-        await this.key_down(char);
-        await this.key_up(char);
-      }
-      if (interval > 0) {
-        await new Promise(r => setTimeout(r, interval));
+    const modifiers: string[] = [];
+    const items = Array.isArray(keys) ? keys : [keys];
+
+    for (const item of items) {
+      for (const char of item) {
+        // 检查是否是修饰键
+        if (char in modifierBit) {
+          this._modifier |= modifierBit[char];
+          modifiers.push(char);
+          continue;
+        }
+
+        const def = keyDefinitions[char];
+        if (def) {
+          // 已知特殊键
+          await page.cdpSession.send("Input.dispatchKeyEvent", {
+            type: "keyDown",
+            key: def.key,
+            code: def.code,
+            windowsVirtualKeyCode: def.keyCode,
+            modifiers: this._modifier,
+          });
+          await page.cdpSession.send("Input.dispatchKeyEvent", {
+            type: "keyUp",
+            key: def.key,
+            code: def.code,
+            windowsVirtualKeyCode: def.keyCode,
+            modifiers: this._modifier,
+          });
+        } else {
+          // 普通字符
+          await page.cdpSession.send("Input.dispatchKeyEvent", {
+            type: "char",
+            text: char,
+            modifiers: this._modifier,
+          });
+        }
+
+        if (interval > 0) {
+          await new Promise(r => setTimeout(r, interval));
+        }
       }
     }
+
+    // 释放所有修饰键
+    for (const m of modifiers) {
+      await this.key_up(m);
+    }
+
     return this;
   }
 

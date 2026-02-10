@@ -1,6 +1,7 @@
 export * from "./core/Browser";
 export * from "./core/Page";
 export * from "./core/Element";
+export * from "./core/ShadowRoot";
 export * from "./core/CDPSession";
 export * from "./core/SessionElement";
 export * from "./core/Keys";

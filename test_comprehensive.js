@@ -951,6 +951,150 @@ async function runTests() {
     return { success: src !== undefined, expected: "资源数据", actual: src ? `${typeof src}` : "null" };
   });
 
+  // ========== 40. ShadowRoot 类 ==========
+  console.log("\n【40. ShadowRoot 类】");
+
+  await test("shadow_root() 获取 shadow root", async () => {
+    const host = await page.ele("#shadow-host");
+    if (!host) return { success: false, expected: "host元素", actual: "null" };
+    const sr = await host.shadow_root();
+    return { success: sr !== null, expected: "ShadowRoot对象", actual: sr ? "ShadowRoot" : "null" };
+  });
+
+  await test("sr 简写获取 shadow root", async () => {
+    const host = await page.ele("#shadow-host");
+    if (!host) return { success: false, expected: "host元素", actual: "null" };
+    const sr = await host.sr;
+    return { success: sr !== null, expected: "ShadowRoot对象", actual: sr ? "ShadowRoot" : "null" };
+  });
+
+  await test("ShadowRoot.tag 返回 shadow-root", async () => {
+    const host = await page.ele("#shadow-host");
+    if (!host) return { success: false, expected: "host元素", actual: "null" };
+    const sr = await host.sr;
+    if (!sr) return { success: false, expected: "ShadowRoot", actual: "null" };
+    return { success: sr.tag === "shadow-root", expected: "shadow-root", actual: sr.tag };
+  });
+
+  await test("ShadowRoot.inner_html() 获取内容", async () => {
+    const host = await page.ele("#shadow-host");
+    if (!host) return { success: false, expected: "host元素", actual: "null" };
+    const sr = await host.sr;
+    if (!sr) return { success: false, expected: "ShadowRoot", actual: "null" };
+    const html = await sr.inner_html();
+    return { success: html.includes("Shadow内容"), expected: "包含Shadow内容", actual: html.substring(0, 60) };
+  });
+
+  await test("ShadowRoot.ele() 查找子元素", async () => {
+    const host = await page.ele("#shadow-host");
+    if (!host) return { success: false, expected: "host元素", actual: "null" };
+    const sr = await host.sr;
+    if (!sr) return { success: false, expected: "ShadowRoot", actual: "null" };
+    const child = await sr.ele("css:#shadow-child");
+    return { success: child !== null, expected: "子元素", actual: child ? "Element" : "null" };
+  });
+
+  await test("ShadowRoot.run_js() 执行JS", async () => {
+    const host = await page.ele("#shadow-host");
+    if (!host) return { success: false, expected: "host元素", actual: "null" };
+    const sr = await host.sr;
+    if (!sr) return { success: false, expected: "ShadowRoot", actual: "null" };
+    const count = await sr.run_js("return this.childNodes.length;");
+    return { success: typeof count === "number" && count > 0, expected: ">0", actual: String(count) };
+  });
+
+  await test("ShadowRoot.html() 获取完整HTML", async () => {
+    const host = await page.ele("#shadow-host");
+    if (!host) return { success: false, expected: "host元素", actual: "null" };
+    const sr = await host.sr;
+    if (!sr) return { success: false, expected: "ShadowRoot", actual: "null" };
+    const html = await sr.html();
+    return { success: html.startsWith("<shadow_root>"), expected: "<shadow_root>...", actual: html.substring(0, 30) };
+  });
+
+  await test("ShadowRoot.parent_ele 返回宿主元素", async () => {
+    const host = await page.ele("#shadow-host");
+    if (!host) return { success: false, expected: "host元素", actual: "null" };
+    const sr = await host.sr;
+    if (!sr) return { success: false, expected: "ShadowRoot", actual: "null" };
+    const parent = sr.parent_ele;
+    return { success: parent !== null, expected: "宿主元素", actual: parent ? "Element" : "null" };
+  });
+
+  // ========== 41. Clicker.left() 增强 ==========
+  console.log("\n【41. Clicker.left() 增强】");
+
+  await test("click.left() 模拟点击按钮", async () => {
+    // 重置按钮文本
+    await page.run_js("document.getElementById('btn').textContent = '点击我'");
+    const btn = await page.ele("#btn");
+    if (!btn) return { success: false, expected: "按钮", actual: "null" };
+    await btn.click.left();
+    const text = await btn.text();
+    return { success: text === "已点击", expected: "已点击", actual: text };
+  });
+
+  await test("click.left(byJs=true) JS点击", async () => {
+    await page.run_js("document.getElementById('btn').textContent = '点击我'");
+    const btn = await page.ele("#btn");
+    if (!btn) return { success: false, expected: "按钮", actual: "null" };
+    await btn.click.left(true);
+    const text = await btn.text();
+    return { success: text === "已点击", expected: "已点击", actual: text };
+  });
+
+  await test("click.left(byJs=null) 自动选择点击方式", async () => {
+    await page.run_js("document.getElementById('btn').textContent = '点击我'");
+    const btn = await page.ele("#btn");
+    if (!btn) return { success: false, expected: "按钮", actual: "null" };
+    await btn.click.left(null);
+    const text = await btn.text();
+    return { success: text === "已点击", expected: "已点击", actual: text };
+  });
+
+  await test("click.left() option标签特殊处理", async () => {
+    const select = await page.ele("#single-select");
+    if (!select) return { success: false, expected: "select", actual: "null" };
+    // 获取第一个 option
+    const opt = await select.ele("css:option:first-child");
+    if (!opt) return { success: false, expected: "option", actual: "null" };
+    await opt.click.left();
+    // 验证选中状态
+    const val = await page.run_js("return document.getElementById('single-select').value");
+    return { success: val === "opt1", expected: "opt1", actual: val };
+  });
+
+  // ========== 42. ElementRect 增强 ==========
+  console.log("\n【42. ElementRect 增强】");
+
+  await test("rect.viewport_click_point() 返回点击坐标", async () => {
+    const el = await page.ele("#btn");
+    if (!el) return { success: false, expected: "按钮", actual: "null" };
+    const cp = await el.rect.viewport_click_point();
+    return { success: cp.x > 0 && cp.y > 0, expected: "x>0, y>0", actual: `x=${cp.x.toFixed(1)}, y=${cp.y.toFixed(1)}` };
+  });
+
+  await test("rect.click_point() 返回页面坐标", async () => {
+    const el = await page.ele("#btn");
+    if (!el) return { success: false, expected: "按钮", actual: "null" };
+    const cp = await el.rect.click_point();
+    return { success: cp.x > 0 && cp.y > 0, expected: "x>0, y>0", actual: `x=${cp.x.toFixed(1)}, y=${cp.y.toFixed(1)}` };
+  });
+
+  await test("rect.viewport_corners() 返回四角坐标", async () => {
+    const el = await page.ele("#positioned");
+    if (!el) return { success: false, expected: "元素", actual: "null" };
+    const corners = await el.rect.viewport_corners();
+    return { success: corners.length === 4 && corners[0].x >= 0, expected: "4个角", actual: `${corners.length}个角` };
+  });
+
+  await test("rect.scroll_position() 返回滚动位置", async () => {
+    const el = await page.ele("#scrollable");
+    if (!el) return { success: false, expected: "元素", actual: "null" };
+    const pos = await el.rect.scroll_position();
+    return { success: pos.x >= 0 && pos.y >= 0, expected: "x>=0, y>=0", actual: `x=${pos.x}, y=${pos.y}` };
+  });
+
   // ========== 结果汇总 ==========
   console.log("\n═══════════════════════════════════════════════════════════");
   console.log("                    测试结果汇总");

@@ -3,6 +3,7 @@ import { CDPSession } from "../core/CDPSession";
 export interface RectableElement {
   readonly session: CDPSession;
   readonly nodeId: number;
+  readonly backendNodeId: number;
   getObjectId(): Promise<string>;
 }
 
@@ -99,10 +100,22 @@ export class ElementRect {
   }
 
   /**
-   * 点击点坐标（默认为中心点）
+   * 点击点坐标（页面坐标）
+   * 对齐 DrissionPage: x 取中点，y 取 padding 顶部 + 3
    */
   async click_point(): Promise<{ x: number; y: number }> {
-    return this.midpoint();
+    const vp = await this.viewport_click_point();
+    try {
+      const metrics = await this._ele.session.send<{ visualViewport: { pageX: number; pageY: number } }>(
+        "Page.getLayoutMetrics"
+      );
+      return {
+        x: vp.x + metrics.visualViewport.pageX,
+        y: vp.y + metrics.visualViewport.pageY,
+      };
+    } catch {
+      return this.midpoint();
+    }
   }
 
   /**
@@ -161,9 +174,26 @@ export class ElementRect {
 
   /**
    * 视口中的点击点坐标
+   * 对齐 DrissionPage: x 取 border 中点，y 取 padding 顶部 + 3
    */
   async viewport_click_point(): Promise<{ x: number; y: number }> {
-    return this.viewport_midpoint();
+    try {
+      const mid = await this.viewport_midpoint();
+      // 尝试用 DOM.getBoxModel 获取 padding 区域
+      const backendId = this._ele.backendNodeId;
+      if (backendId > 0) {
+        const { model } = await this._ele.session.send<{ model: { padding: number[] } }>(
+          "DOM.getBoxModel",
+          { backendNodeId: backendId }
+        );
+        // padding quad: [x1,y1, x2,y2, x3,y3, x4,y4]
+        const paddingTop = model.padding[1];
+        return { x: mid.x, y: paddingTop + 3 };
+      }
+      return mid;
+    } catch {
+      return this.viewport_midpoint();
+    }
   }
 
   /**

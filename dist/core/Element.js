@@ -34,6 +34,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.Element = void 0;
+const ShadowRoot_1 = require("./ShadowRoot");
 const ElementScroller_1 = require("../units/ElementScroller");
 const ElementClicker_1 = require("../units/ElementClicker");
 const ElementWaiter_1 = require("../units/ElementWaiter");
@@ -1061,13 +1062,27 @@ class Element {
             objectId,
             functionDeclaration: "function() { return this.shadowRoot; }",
         });
-        if (!result.objectId)
+        if (!result.objectId || result.subtype === "null")
             return null;
+        // 获取 backendNodeId
         await this._ensureDomTree();
-        const { nodeId } = await this._session.send("DOM.requestNode", {
-            objectId: result.objectId,
-        });
-        return this._createElement(nodeId);
+        try {
+            const { nodeId } = await this._session.send("DOM.requestNode", {
+                objectId: result.objectId,
+            });
+            let backendId = 0;
+            if (nodeId > 0) {
+                try {
+                    const desc = await this._session.send("DOM.describeNode", { nodeId });
+                    backendId = desc.node.backendNodeId;
+                }
+                catch { /* 忽略 */ }
+            }
+            return new ShadowRoot_1.ShadowRoot(this, { objId: result.objectId, backendId });
+        }
+        catch {
+            return new ShadowRoot_1.ShadowRoot(this, { objId: result.objectId });
+        }
     }
     /**
      * shadow_root 的简写
