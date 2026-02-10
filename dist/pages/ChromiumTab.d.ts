@@ -50,6 +50,34 @@ export declare class ChromiumTab {
     get screencast(): Screencast;
     get cookies_setter(): CookiesSetter;
     get window(): WindowSetter;
+    /**
+     * 整体默认超时时间（秒）
+     */
+    get timeout(): number;
+    /**
+     * 三种超时时间
+     */
+    get timeouts(): {
+        base: number;
+        page_load: number;
+        script: number;
+    };
+    /**
+     * 重试次数
+     */
+    get retry_times(): number;
+    /**
+     * 重试间隔（秒）
+     */
+    get retry_interval(): number;
+    /**
+     * 页面加载策略
+     */
+    get load_mode(): string;
+    /**
+     * 当前页面 user agent
+     */
+    user_agent(): Promise<string>;
     init(): Promise<void>;
     get(url: string): Promise<boolean>;
     refresh(ignoreCache?: boolean): Promise<void>;
@@ -59,6 +87,7 @@ export declare class ChromiumTab {
     html(): Promise<string>;
     title(): Promise<string>;
     url(): Promise<string>;
+    json(): Promise<any>;
     cookies(allDomains?: boolean, allInfo?: boolean): Promise<any[]>;
     ele(locator: string, index?: number, timeout?: number): Promise<Element | null>;
     eles(locator: string, timeout?: number): Promise<Element[]>;
@@ -75,6 +104,14 @@ export declare class ChromiumTab {
     run_async_js(script: string, ...args: any[]): Promise<void>;
     run_cdp(cmd: string, params?: Record<string, any>): Promise<any>;
     close(others?: boolean): Promise<void>;
+    /**
+     * 断开与页面的连接，但不关闭标签页
+     */
+    disconnect(): void;
+    /**
+     * 重新连接页面（释放内存后重连）
+     */
+    reconnect(wait?: number): Promise<void>;
     activate(): Promise<void>;
     get_frame(locIndEle: string | number | Element): Promise<ChromiumFrame | null>;
     get_frames(locator?: string): Promise<Element[]>;
@@ -109,7 +146,7 @@ export declare class ChromiumTab {
         cache?: boolean;
         cookies?: boolean;
     }): Promise<void>;
-    handle_alert(accept?: boolean, send?: string, timeout?: number): Promise<string | false>;
+    handle_alert(accept?: boolean | null, send?: string, timeout?: number, nextOne?: boolean): Promise<string | false>;
     active_ele(): Promise<Element | null>;
     remove_ele(locOrEle: string | Element): Promise<void>;
     add_ele(htmlOrInfo: string | {

@@ -89,7 +89,7 @@ export declare class WebPage {
     get_tab(tabId: string): Promise<any>;
     activate_tab(tabId: string): Promise<void>;
     close_tab(tabId?: string): Promise<void>;
-    handle_alert(accept?: boolean, promptText?: string): Promise<void>;
+    handle_alert(accept?: boolean | null, promptText?: string, timeout?: number, nextOne?: boolean): Promise<string | false>;
     screenshot(path?: string): Promise<Buffer>;
     get_frames(): Promise<any[]>;
     stop_loading(): Promise<void>;

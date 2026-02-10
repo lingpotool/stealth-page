@@ -32,6 +32,9 @@ export class ChromiumOptions {
   flags: Record<string, any> = {};
   timeouts: ChromiumTimeouts = { base: 10, pageLoad: 30, script: 30 };
   uploadFiles: string[] = [];
+  retryTimes: number = 3;
+  retryInterval: number = 2;
+  loadMode: string = "normal";
 
   constructor(init?: ChromiumOptionsInit) {
     if (init) {

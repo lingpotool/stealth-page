@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ChromiumPageSetter = exports.PageLoadMode = void 0;
+exports.ScrollSettings = exports.ChromiumPageSetter = exports.PageLoadMode = void 0;
 const CookiesSetter_1 = require("../units/CookiesSetter");
 const WindowSetter_1 = require("../units/WindowSetter");
 /**
@@ -35,6 +35,7 @@ class ChromiumPageSetter {
         this._loadMode = null;
         this._cookies = null;
         this._window = null;
+        this._scrollSettings = null;
         this._page = page;
     }
     /**
@@ -139,6 +140,7 @@ class ChromiumPageSetter {
         return this;
     }
     async load_mode(mode) {
+        this._page.browser.options.loadMode = mode;
         const page = this._page["_page"];
         if (page) {
             const strategy = mode === "normal" ? "normal" : mode === "eager" ? "eager" : "none";
@@ -229,5 +231,53 @@ class ChromiumPageSetter {
         }
         return this;
     }
+    /**
+     * 设置连接失败时重连次数
+     */
+    retry_times(times) {
+        this._page.browser.options.retryTimes = times;
+        return this;
+    }
+    /**
+     * 设置连接失败时重连间隔（秒）
+     */
+    retry_interval(interval) {
+        this._page.browser.options.retryInterval = interval;
+        return this;
+    }
+    /**
+     * 返回滚动设置对象
+     */
+    get scroll() {
+        if (!this._scrollSettings) {
+            this._scrollSettings = new ScrollSettings(this._page);
+        }
+        return this._scrollSettings;
+    }
 }
 exports.ChromiumPageSetter = ChromiumPageSetter;
+/**
+ * 滚动设置类
+ */
+class ScrollSettings {
+    constructor(page) {
+        this._page = page;
+    }
+    /**
+     * 设置是否平滑滚动
+     */
+    smooth(onOff = true) {
+        if (this._page.scroll) {
+            this._page.scroll.set_smooth(onOff);
+        }
+    }
+    /**
+     * 设置滚动后是否等待滚动结束
+     */
+    wait_complete(onOff = true) {
+        if (this._page.scroll) {
+            this._page.scroll.set_wait_complete(onOff);
+        }
+    }
+}
+exports.ScrollSettings = ScrollSettings;

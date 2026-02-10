@@ -42,6 +42,26 @@ export class PageStates {
     return this._checkAlert();
   }
 
+  /**
+   * 当前链接是否可用
+   */
+  get url_available(): Promise<boolean> {
+    return this._checkUrlAvailable();
+  }
+
+  private async _checkUrlAvailable(): Promise<boolean> {
+    try {
+      const { result } = await this._page.cdpSession.send<{ result: { value: string } }>("Runtime.evaluate", {
+        expression: "document.location.href",
+        returnByValue: true,
+      });
+      const url = result.value;
+      return !!url && url !== "about:blank" && !url.startsWith("chrome-error://");
+    } catch {
+      return false;
+    }
+  }
+
   private async _checkLoading(): Promise<boolean> {
     try {
       const { result } = await this._page.cdpSession.send<{ result: { value: string } }>("Runtime.evaluate", {
@@ -78,9 +98,20 @@ export class PageStates {
   }
 
   private async _checkAlert(): Promise<boolean> {
-    // CDP 没有直接检查 alert 的方法，这里返回 false
-    // 实际实现需要监听 Page.javascriptDialogOpening 事件
-    return false;
+    // 尝试处理弹窗来检测是否存在
+    try {
+      // 发送一个不会改变状态的检查
+      await this._page.cdpSession.send("Runtime.evaluate", {
+        expression: "1+1",
+        returnByValue: true,
+        timeout: 100,
+      });
+      return false;
+    } catch (e: any) {
+      // 如果有弹窗，evaluate 会失败
+      if (e?.message?.includes("dialog")) return true;
+      return false;
+    }
   }
 
   /**

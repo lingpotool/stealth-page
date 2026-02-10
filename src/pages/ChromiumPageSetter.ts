@@ -39,6 +39,7 @@ export class ChromiumPageSetter {
   private _loadMode: PageLoadMode | null = null;
   private _cookies: CookiesSetter | null = null;
   private _window: WindowSetter | null = null;
+  private _scrollSettings: ScrollSettings | null = null;
 
   constructor(page: ChromiumPage) {
     this._page = page;
@@ -153,6 +154,7 @@ export class ChromiumPageSetter {
   }
 
   async load_mode(mode: "normal" | "eager" | "none"): Promise<this> {
+    this._page.browser.options.loadMode = mode;
     const page = this._page["_page"];
     if (page) {
       const strategy = mode === "normal" ? "normal" : mode === "eager" ? "eager" : "none";
@@ -246,5 +248,60 @@ export class ChromiumPageSetter {
       await this._page.activate_tab(tabs[0].id);
     }
     return this;
+  }
+
+  /**
+   * 设置连接失败时重连次数
+   */
+  retry_times(times: number): this {
+    this._page.browser.options.retryTimes = times;
+    return this;
+  }
+
+  /**
+   * 设置连接失败时重连间隔（秒）
+   */
+  retry_interval(interval: number): this {
+    this._page.browser.options.retryInterval = interval;
+    return this;
+  }
+
+  /**
+   * 返回滚动设置对象
+   */
+  get scroll(): ScrollSettings {
+    if (!this._scrollSettings) {
+      this._scrollSettings = new ScrollSettings(this._page);
+    }
+    return this._scrollSettings;
+  }
+}
+
+/**
+ * 滚动设置类
+ */
+export class ScrollSettings {
+  private readonly _page: ChromiumPage;
+
+  constructor(page: ChromiumPage) {
+    this._page = page;
+  }
+
+  /**
+   * 设置是否平滑滚动
+   */
+  smooth(onOff: boolean = true): void {
+    if (this._page.scroll) {
+      this._page.scroll.set_smooth(onOff);
+    }
+  }
+
+  /**
+   * 设置滚动后是否等待滚动结束
+   */
+  wait_complete(onOff: boolean = true): void {
+    if (this._page.scroll) {
+      this._page.scroll.set_wait_complete(onOff);
+    }
   }
 }

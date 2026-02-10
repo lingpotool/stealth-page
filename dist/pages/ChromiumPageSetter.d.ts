@@ -25,6 +25,7 @@ export declare class ChromiumPageSetter {
     private _loadMode;
     private _cookies;
     private _window;
+    private _scrollSettings;
     constructor(page: ChromiumPage);
     /**
      * 返回用于设置加载模式的对象
@@ -65,4 +66,31 @@ export declare class ChromiumPageSetter {
      * 激活标签页
      */
     activate(): Promise<this>;
+    /**
+     * 设置连接失败时重连次数
+     */
+    retry_times(times: number): this;
+    /**
+     * 设置连接失败时重连间隔（秒）
+     */
+    retry_interval(interval: number): this;
+    /**
+     * 返回滚动设置对象
+     */
+    get scroll(): ScrollSettings;
+}
+/**
+ * 滚动设置类
+ */
+export declare class ScrollSettings {
+    private readonly _page;
+    constructor(page: ChromiumPage);
+    /**
+     * 设置是否平滑滚动
+     */
+    smooth(onOff?: boolean): void;
+    /**
+     * 设置滚动后是否等待滚动结束
+     */
+    wait_complete(onOff?: boolean): void;
 }

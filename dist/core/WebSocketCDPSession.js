@@ -19,6 +19,13 @@ class ChildCDPSession {
     on(event, handler) {
         this.parent.onSession(this.sessionId, event, handler);
     }
+    once(event, handler) {
+        const wrapper = (params) => {
+            this.off(event, wrapper);
+            handler(params);
+        };
+        this.on(event, wrapper);
+    }
     off(event, handler) {
         this.parent.offSession(this.sessionId, event, handler);
     }
@@ -159,6 +166,13 @@ class WebSocketCDPSession {
             this.eventHandlers.set(event, set);
         }
         set.add(handler);
+    }
+    once(event, handler) {
+        const wrapper = (params) => {
+            this.off(event, wrapper);
+            handler(params);
+        };
+        this.on(event, wrapper);
     }
     off(event, handler) {
         const set = this.eventHandlers.get(event);

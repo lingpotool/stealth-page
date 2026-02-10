@@ -30,6 +30,9 @@ export declare class ChromiumOptions {
     flags: Record<string, any>;
     timeouts: ChromiumTimeouts;
     uploadFiles: string[];
+    retryTimes: number;
+    retryInterval: number;
+    loadMode: string;
     constructor(init?: ChromiumOptionsInit);
     set_timeouts(base: number, pageLoad?: number, script?: number): this;
     set_paths(options: {

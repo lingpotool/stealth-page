@@ -57,6 +57,16 @@ export declare class ChromiumPage {
     get window(): WindowSetter;
     constructor(addrOrOpts?: string | Chromium | ChromiumOptions);
     get browser(): Chromium;
+    get timeout(): number;
+    get timeouts(): {
+        base: number;
+        page_load: number;
+        script: number;
+    };
+    get retry_times(): number;
+    get retry_interval(): number;
+    get load_mode_value(): string;
+    user_agent(): Promise<string>;
     init(): Promise<void>;
     get(url: string): Promise<boolean>;
     ele(locator: string, index?: number): Promise<Element | null>;
@@ -75,6 +85,7 @@ export declare class ChromiumPage {
     html(): Promise<string>;
     title(): Promise<string>;
     url(): Promise<string>;
+    json(): Promise<any>;
     new_tab(url?: string, options?: {
         newWindow?: boolean;
         background?: boolean;
@@ -96,9 +107,9 @@ export declare class ChromiumPage {
         domain?: string;
         path?: string;
     }>): Promise<void>;
-    refresh(): Promise<void>;
-    back(): Promise<void>;
-    forward(): Promise<void>;
+    refresh(ignoreCache?: boolean): Promise<void>;
+    back(steps?: number): Promise<void>;
+    forward(steps?: number): Promise<void>;
     get_tabs(): Promise<Array<{
         id: string;
         url: string;
@@ -112,7 +123,15 @@ export declare class ChromiumPage {
     scroll_to_top(): Promise<void>;
     scroll_to_bottom(): Promise<void>;
     quit(): Promise<void>;
-    handle_alert(accept?: boolean, promptText?: string): Promise<void>;
+    /**
+     * 断开与页面的连接，但不关闭标签页
+     */
+    disconnect(): void;
+    /**
+     * 重新连接页面
+     */
+    reconnect(wait?: number): Promise<void>;
+    handle_alert(accept?: boolean | null, promptText?: string, timeout?: number, nextOne?: boolean): Promise<string | false>;
     screenshot(path?: string): Promise<Buffer>;
     get_frames(): Promise<Array<{
         id: string;

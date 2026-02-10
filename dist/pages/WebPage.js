@@ -358,9 +358,9 @@ class WebPage {
             return this._chromiumPage.close_tab(tabId);
         }
     }
-    async handle_alert(accept = true, promptText) {
+    async handle_alert(accept = true, promptText, timeout, nextOne = false) {
         if (this._mode === "d") {
-            return this._chromiumPage.handle_alert(accept, promptText);
+            return this._chromiumPage.handle_alert(accept, promptText, timeout, nextOne);
         }
         throw new Error("WebPage handle_alert() is only available in driver mode.");
     }

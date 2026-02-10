@@ -425,7 +425,30 @@ export class Page {
     return elements;
   }
 
-  async runJs<T = any>(expression: string): Promise<T> {
+  async runJs<T = any>(expression: string, ...args: any[]): Promise<T> {
+    // 如果有参数，使用 Runtime.callFunctionOn 方式
+    if (args.length > 0) {
+      // 包装成函数
+      let funcBody = expression.trim();
+      const isFunction = funcBody.startsWith('function') || funcBody.startsWith('(') || funcBody.startsWith('async');
+      if (!isFunction) {
+        funcBody = `function(){${funcBody}}`;
+      }
+      
+      const { result: docResult } = await this.session.send<{ result: { objectId: string } }>("Runtime.evaluate", {
+        expression: "document",
+        returnByValue: false,
+      });
+      
+      const { result } = await this.session.send<{ result: { value: T } }>("Runtime.callFunctionOn", {
+        functionDeclaration: funcBody,
+        objectId: docResult.objectId,
+        arguments: args.map(a => ({ value: a })),
+        returnByValue: true,
+      });
+      return result.value;
+    }
+    
     // 如果表达式不包含 return 语句，自动包装
     let wrappedExpression = expression.trim();
     if (!wrappedExpression.startsWith('return ') && 
@@ -475,6 +498,15 @@ export class Page {
     return this.runJs<string>("document.location.href || ''");
   }
 
+  async json(): Promise<any> {
+    const htmlText = await this.runJs<string>("document.body?.innerText || ''");
+    try {
+      return JSON.parse(htmlText);
+    } catch {
+      throw new Error("页面内容不是有效的 JSON");
+    }
+  }
+
   async cookies(): Promise<
     Array<{
       name: string;
@@ -515,23 +547,31 @@ export class Page {
     }
   }
 
-  async refresh(): Promise<void> {
-    await this.session.send("Page.reload");
+  async refresh(ignoreCache: boolean = false): Promise<void> {
+    await this.session.send("Page.reload", { ignoreCache });
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
 
-  async back(): Promise<void> {
-    await this.session.send("Runtime.evaluate", {
-      expression: "window.history.back();",
-      returnByValue: true,
-    });
+  async back(steps: number = 1): Promise<void> {
+    if (steps <= 0) return;
+    for (let i = 0; i < steps; i++) {
+      await this.session.send("Runtime.evaluate", {
+        expression: "window.history.back();",
+        returnByValue: true,
+      });
+      if (steps > 1) await new Promise(r => setTimeout(r, 100));
+    }
   }
 
-  async forward(): Promise<void> {
-    await this.session.send("Runtime.evaluate", {
-      expression: "window.history.forward();",
-      returnByValue: true,
-    });
+  async forward(steps: number = 1): Promise<void> {
+    if (steps <= 0) return;
+    for (let i = 0; i < steps; i++) {
+      await this.session.send("Runtime.evaluate", {
+        expression: "window.history.forward();",
+        returnByValue: true,
+      });
+      if (steps > 1) await new Promise(r => setTimeout(r, 100));
+    }
   }
 
   async scroll_to(x: number, y: number): Promise<void> {
@@ -550,10 +590,67 @@ export class Page {
     });
   }
 
-  async handle_alert(accept: boolean = true, promptText?: string): Promise<void> {
-    await this.session.send("Page.handleJavaScriptDialog", {
-      accept,
-      promptText,
+  async handle_alert(accept: boolean | null = true, promptText?: string, timeout?: number, nextOne: boolean = false): Promise<string | false> {
+    const timeoutMs = timeout ? timeout * 1000 : 3000;
+    
+    if (nextOne) {
+      // 处理下一个出现的弹窗
+      return new Promise<string | false>((resolve) => {
+        const handler = async (params: any) => {
+          const text = params.message || "";
+          if (accept !== null) {
+            await this.session.send("Page.handleJavaScriptDialog", {
+              accept: accept === true,
+              promptText,
+            });
+          }
+          resolve(text);
+        };
+        this.session.once("Page.javascriptDialogOpening", handler);
+      });
+    }
+    
+    // 等待弹窗出现
+    return new Promise<string | false>((resolve) => {
+      let resolved = false;
+      const timer = setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          resolve(false);
+        }
+      }, timeoutMs);
+      
+      const handler = async (params: any) => {
+        if (resolved) return;
+        resolved = true;
+        clearTimeout(timer);
+        const text = params.message || "";
+        if (accept !== null) {
+          try {
+            await this.session.send("Page.handleJavaScriptDialog", {
+              accept: accept === true,
+              promptText,
+            });
+          } catch { /* 弹窗可能已被处理 */ }
+        }
+        resolve(text);
+      };
+      
+      this.session.once("Page.javascriptDialogOpening", handler);
+      
+      // 也尝试直接处理已存在的弹窗
+      if (accept !== null) {
+        this.session.send("Page.handleJavaScriptDialog", {
+          accept: accept === true,
+          promptText,
+        }).then(() => {
+          if (!resolved) {
+            resolved = true;
+            clearTimeout(timer);
+            resolve("");
+          }
+        }).catch(() => { /* 没有弹窗 */ });
+      }
     });
   }
 

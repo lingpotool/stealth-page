@@ -24,6 +24,11 @@ export declare class PageStates {
      * 是否存在弹窗
      */
     get has_alert(): Promise<boolean>;
+    /**
+     * 当前链接是否可用
+     */
+    get url_available(): Promise<boolean>;
+    private _checkUrlAvailable;
     private _checkLoading;
     private _checkAlive;
     private _getReadyState;

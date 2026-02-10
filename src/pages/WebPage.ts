@@ -412,9 +412,9 @@ export class WebPage {
     }
   }
 
-  async handle_alert(accept: boolean = true, promptText?: string): Promise<void> {
+  async handle_alert(accept: boolean | null = true, promptText?: string, timeout?: number, nextOne: boolean = false): Promise<string | false> {
     if (this._mode === "d") {
-      return this._chromiumPage.handle_alert(accept, promptText);
+      return this._chromiumPage.handle_alert(accept, promptText, timeout, nextOne);
     }
     throw new Error("WebPage handle_alert() is only available in driver mode.");
   }

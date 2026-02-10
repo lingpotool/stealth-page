@@ -167,6 +167,39 @@ export class ChromiumPage {
     return this._chromium;
   }
 
+  get timeout(): number {
+    return this._chromium.options.timeouts.base;
+  }
+
+  get timeouts(): { base: number; page_load: number; script: number } {
+    return {
+      base: this._chromium.options.timeouts.base,
+      page_load: this._chromium.options.timeouts.pageLoad,
+      script: this._chromium.options.timeouts.script,
+    };
+  }
+
+  get retry_times(): number {
+    return this._chromium.options.retryTimes ?? 3;
+  }
+
+  get retry_interval(): number {
+    return this._chromium.options.retryInterval ?? 2;
+  }
+
+  get load_mode_value(): string {
+    return this._chromium.options.loadMode ?? "normal";
+  }
+
+  async user_agent(): Promise<string> {
+    await this.init();
+    const { result } = await this._page!.cdpSession.send<{ result: { value: string } }>("Runtime.evaluate", {
+      expression: "navigator.userAgent",
+      returnByValue: true,
+    });
+    return result.value;
+  }
+
   async init(): Promise<void> {
     if (!this._page) {
       await this._chromium.connect();
@@ -267,6 +300,11 @@ export class ChromiumPage {
     return this._page!.url();
   }
 
+  async json(): Promise<any> {
+    await this.init();
+    return this._page!.json();
+  }
+
   async new_tab(url?: string, options?: {
     newWindow?: boolean;
     background?: boolean;
@@ -361,19 +399,19 @@ export class ChromiumPage {
     return this._page!.set_cookies(cookies);
   }
 
-  async refresh(): Promise<void> {
+  async refresh(ignoreCache: boolean = false): Promise<void> {
     await this.init();
-    return this._page!.refresh();
+    return this._page!.refresh(ignoreCache);
   }
 
-  async back(): Promise<void> {
+  async back(steps: number = 1): Promise<void> {
     await this.init();
-    return this._page!.back();
+    return this._page!.back(steps);
   }
 
-  async forward(): Promise<void> {
+  async forward(steps: number = 1): Promise<void> {
     await this.init();
-    return this._page!.forward();
+    return this._page!.forward(steps);
   }
 
   async get_tabs(): Promise<Array<{ id: string; url: string; title: string }>> {
@@ -418,9 +456,30 @@ export class ChromiumPage {
     return this._chromium.quit();
   }
 
-  async handle_alert(accept: boolean = true, promptText?: string): Promise<void> {
+  /**
+   * 断开与页面的连接，但不关闭标签页
+   */
+  disconnect(): void {
+    if (this._page) {
+      this._page.cdpSession.close?.();
+      this._page = null;
+    }
+  }
+
+  /**
+   * 重新连接页面
+   */
+  async reconnect(wait: number = 0): Promise<void> {
+    this.disconnect();
+    if (wait > 0) {
+      await new Promise(r => setTimeout(r, wait * 1000));
+    }
     await this.init();
-    return this._page!.handle_alert(accept, promptText);
+  }
+
+  async handle_alert(accept: boolean | null = true, promptText?: string, timeout?: number, nextOne: boolean = false): Promise<string | false> {
+    await this.init();
+    return this._page!.handle_alert(accept, promptText, timeout, nextOne);
   }
 
   async screenshot(path?: string): Promise<Buffer> {

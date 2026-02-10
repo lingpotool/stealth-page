@@ -23,10 +23,11 @@ export declare class Page {
     ele_html(locator: string): Promise<string | null>;
     eles_attrs(locator: string, attrs: string[]): Promise<Array<Record<string, string>>>;
     eles(locator: string): Promise<Element[]>;
-    runJs<T = any>(expression: string): Promise<T>;
+    runJs<T = any>(expression: string, ...args: any[]): Promise<T>;
     html(): Promise<string>;
     title(): Promise<string>;
     url(): Promise<string>;
+    json(): Promise<any>;
     cookies(): Promise<Array<{
         name: string;
         value: string;
@@ -42,13 +43,13 @@ export declare class Page {
         domain?: string;
         path?: string;
     }>): Promise<void>;
-    refresh(): Promise<void>;
-    back(): Promise<void>;
-    forward(): Promise<void>;
+    refresh(ignoreCache?: boolean): Promise<void>;
+    back(steps?: number): Promise<void>;
+    forward(steps?: number): Promise<void>;
     scroll_to(x: number, y: number): Promise<void>;
     scroll_to_top(): Promise<void>;
     scroll_to_bottom(): Promise<void>;
-    handle_alert(accept?: boolean, promptText?: string): Promise<void>;
+    handle_alert(accept?: boolean | null, promptText?: string, timeout?: number, nextOne?: boolean): Promise<string | false>;
     screenshot(path?: string): Promise<Buffer>;
     get_frame(_frameId: string): Promise<Page>;
     get_frames(): Promise<Array<{

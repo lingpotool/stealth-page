@@ -16,6 +16,7 @@ export declare class WebSocketCDPSession implements CDPSession {
      */
     sendToSession<T = any>(sessionId: string, method: string, params?: Record<string, any>): Promise<T>;
     on(event: string, handler: CDPEventHandler): void;
+    once(event: string, handler: CDPEventHandler): void;
     off(event: string, handler: CDPEventHandler): void;
     /**
      * 为特定 session 注册事件处理器

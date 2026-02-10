@@ -140,6 +140,57 @@ export class ChromiumTab {
     return this._windowSetter!;
   }
 
+  /**
+   * 整体默认超时时间（秒）
+   */
+  get timeout(): number {
+    return this._browser.options.timeouts.base;
+  }
+
+  /**
+   * 三种超时时间
+   */
+  get timeouts(): { base: number; page_load: number; script: number } {
+    return {
+      base: this._browser.options.timeouts.base,
+      page_load: this._browser.options.timeouts.pageLoad,
+      script: this._browser.options.timeouts.script,
+    };
+  }
+
+  /**
+   * 重试次数
+   */
+  get retry_times(): number {
+    return this._browser.options.retryTimes ?? 3;
+  }
+
+  /**
+   * 重试间隔（秒）
+   */
+  get retry_interval(): number {
+    return this._browser.options.retryInterval ?? 2;
+  }
+
+  /**
+   * 页面加载策略
+   */
+  get load_mode(): string {
+    return this._browser.options.loadMode ?? "normal";
+  }
+
+  /**
+   * 当前页面 user agent
+   */
+  async user_agent(): Promise<string> {
+    await this.init();
+    const { result } = await this._page!.cdpSession.send<{ result: { value: string } }>("Runtime.evaluate", {
+      expression: "navigator.userAgent",
+      returnByValue: true,
+    });
+    return result.value;
+  }
+
   // ========== 初始化 ==========
 
   async init(): Promise<void> {
@@ -201,6 +252,11 @@ export class ChromiumTab {
   async url(): Promise<string> {
     await this.init();
     return this._page!.url();
+  }
+
+  async json(): Promise<any> {
+    await this.init();
+    return this._page!.json();
   }
 
   async cookies(allDomains: boolean = false, allInfo: boolean = false): Promise<any[]> {
@@ -279,7 +335,7 @@ export class ChromiumTab {
 
   async run_js(script: string, ...args: any[]): Promise<any> {
     await this.init();
-    return this._page!.runJs(script);
+    return this._page!.runJs(script, ...args);
   }
 
   async run_js_loaded(script: string, ...args: any[]): Promise<any> {
@@ -288,15 +344,32 @@ export class ChromiumTab {
       expression: "new Promise(r => document.readyState === 'complete' ? r() : window.addEventListener('load', r))",
       awaitPromise: true,
     });
-    return this._page!.runJs(script);
+    return this._page!.runJs(script, ...args);
   }
 
   async run_async_js(script: string, ...args: any[]): Promise<void> {
     await this.init();
-    await this._page!.cdpSession.send("Runtime.evaluate", {
-      expression: script,
-      awaitPromise: false,
-    });
+    if (args.length > 0) {
+      // 使用 callFunctionOn 传参
+      const { result: docResult } = await this._page!.cdpSession.send<{ result: { objectId: string } }>("Runtime.evaluate", {
+        expression: "document",
+        returnByValue: false,
+      });
+      const isFunction = script.trim().startsWith('function') || script.trim().startsWith('(') || script.trim().startsWith('async');
+      const funcBody = isFunction ? script : `function(){${script}}`;
+      await this._page!.cdpSession.send("Runtime.callFunctionOn", {
+        functionDeclaration: funcBody,
+        objectId: docResult.objectId,
+        arguments: args.map(a => ({ value: a })),
+        returnByValue: false,
+        awaitPromise: false,
+      });
+    } else {
+      await this._page!.cdpSession.send("Runtime.evaluate", {
+        expression: script,
+        awaitPromise: false,
+      });
+    }
   }
 
   async run_cdp(cmd: string, params: Record<string, any> = {}): Promise<any> {
@@ -317,6 +390,27 @@ export class ChromiumTab {
     } else {
       await this._browser.close_tab(this._tabId);
     }
+  }
+
+  /**
+   * 断开与页面的连接，但不关闭标签页
+   */
+  disconnect(): void {
+    if (this._page) {
+      this._page.cdpSession.close?.();
+      this._page = null;
+    }
+  }
+
+  /**
+   * 重新连接页面（释放内存后重连）
+   */
+  async reconnect(wait: number = 0): Promise<void> {
+    this.disconnect();
+    if (wait > 0) {
+      await new Promise(r => setTimeout(r, wait * 1000));
+    }
+    await this.init();
   }
 
   async activate(): Promise<void> {
@@ -558,14 +652,9 @@ export class ChromiumTab {
 
   // ========== Alert 处理 ==========
 
-  async handle_alert(accept: boolean = true, send?: string, timeout?: number): Promise<string | false> {
+  async handle_alert(accept: boolean | null = true, send?: string, timeout?: number, nextOne: boolean = false): Promise<string | false> {
     await this.init();
-    try {
-      await this._page!.handle_alert(accept, send);
-      return "";
-    } catch {
-      return false;
-    }
+    return this._page!.handle_alert(accept, send, timeout, nextOne);
   }
 
   // ========== 元素操作 ==========

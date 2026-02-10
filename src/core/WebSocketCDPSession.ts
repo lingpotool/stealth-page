@@ -26,6 +26,14 @@ class ChildCDPSession implements CDPSession {
     this.parent.onSession(this.sessionId, event, handler);
   }
 
+  once(event: string, handler: CDPEventHandler): void {
+    const wrapper: CDPEventHandler = (params) => {
+      this.off(event, wrapper);
+      handler(params);
+    };
+    this.on(event, wrapper);
+  }
+
   off(event: string, handler: CDPEventHandler): void {
     this.parent.offSession(this.sessionId, event, handler);
   }
@@ -115,6 +123,14 @@ export class WebSocketCDPSession implements CDPSession {
       this.eventHandlers.set(event, set);
     }
     set.add(handler);
+  }
+
+  once(event: string, handler: CDPEventHandler): void {
+    const wrapper: CDPEventHandler = (params) => {
+      this.off(event, wrapper);
+      handler(params);
+    };
+    this.on(event, wrapper);
   }
 
   off(event: string, handler: CDPEventHandler): void {

@@ -16,6 +16,9 @@ class ChromiumOptions {
         this.flags = {};
         this.timeouts = { base: 10, pageLoad: 30, script: 30 };
         this.uploadFiles = [];
+        this.retryTimes = 3;
+        this.retryInterval = 2;
+        this.loadMode = "normal";
         if (init) {
             Object.assign(this, {
                 browserPath: init.browserPath ?? this.browserPath,

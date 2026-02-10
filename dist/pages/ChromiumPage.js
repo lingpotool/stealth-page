@@ -184,6 +184,33 @@ class ChromiumPage {
     get browser() {
         return this._chromium;
     }
+    get timeout() {
+        return this._chromium.options.timeouts.base;
+    }
+    get timeouts() {
+        return {
+            base: this._chromium.options.timeouts.base,
+            page_load: this._chromium.options.timeouts.pageLoad,
+            script: this._chromium.options.timeouts.script,
+        };
+    }
+    get retry_times() {
+        return this._chromium.options.retryTimes ?? 3;
+    }
+    get retry_interval() {
+        return this._chromium.options.retryInterval ?? 2;
+    }
+    get load_mode_value() {
+        return this._chromium.options.loadMode ?? "normal";
+    }
+    async user_agent() {
+        await this.init();
+        const { result } = await this._page.cdpSession.send("Runtime.evaluate", {
+            expression: "navigator.userAgent",
+            returnByValue: true,
+        });
+        return result.value;
+    }
     async init() {
         if (!this._page) {
             await this._chromium.connect();
@@ -267,6 +294,10 @@ class ChromiumPage {
     async url() {
         await this.init();
         return this._page.url();
+    }
+    async json() {
+        await this.init();
+        return this._page.json();
     }
     async new_tab(url, options) {
         await this.init();
@@ -352,17 +383,17 @@ class ChromiumPage {
         await this.init();
         return this._page.set_cookies(cookies);
     }
-    async refresh() {
+    async refresh(ignoreCache = false) {
         await this.init();
-        return this._page.refresh();
+        return this._page.refresh(ignoreCache);
     }
-    async back() {
+    async back(steps = 1) {
         await this.init();
-        return this._page.back();
+        return this._page.back(steps);
     }
-    async forward() {
+    async forward(steps = 1) {
         await this.init();
-        return this._page.forward();
+        return this._page.forward(steps);
     }
     async get_tabs() {
         return this._chromium.get_tabs();
@@ -397,9 +428,28 @@ class ChromiumPage {
     async quit() {
         return this._chromium.quit();
     }
-    async handle_alert(accept = true, promptText) {
+    /**
+     * 断开与页面的连接，但不关闭标签页
+     */
+    disconnect() {
+        if (this._page) {
+            this._page.cdpSession.close?.();
+            this._page = null;
+        }
+    }
+    /**
+     * 重新连接页面
+     */
+    async reconnect(wait = 0) {
+        this.disconnect();
+        if (wait > 0) {
+            await new Promise(r => setTimeout(r, wait * 1000));
+        }
         await this.init();
-        return this._page.handle_alert(accept, promptText);
+    }
+    async handle_alert(accept = true, promptText, timeout, nextOne = false) {
+        await this.init();
+        return this._page.handle_alert(accept, promptText, timeout, nextOne);
     }
     async screenshot(path) {
         await this.init();
