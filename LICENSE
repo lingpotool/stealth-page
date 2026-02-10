@@ -1,21 +1,64 @@
-MIT License
+Copyright (c) 2025, stealth-page contributors
+All rights reserved.
 
-Copyright (c) 2024
+本项目 API 设计参考 DrissionPage (https://github.com/g1879/DrissionPage)，
+由 g1879 创作，版权归 g1879 所有。reference/ 目录下的 Python 源码为 DrissionPage
+v4.1.1.2 原始代码，受 DrissionPage 原始许可证约束。
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+stealth-page 的 Node.js/TypeScript 代码为独立实现，适用以下条款：
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+允许任何人以个人身份使用或分发本项目源代码，但仅限于学习和合法非盈利目的。
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+个人或组织如未获得版权持有人授权，不得将本项目以源代码或二进制形式用于商业行为。
+
+使用本项目需满足以下条款，如使用过程中出现违反任意一项条款的情形，授权自动失效。
+
+* 禁止将本项目应用到任何可能违反当地法律规定和道德约束的项目中
+* 禁止将本项目用于任何可能有损他人利益的项目中
+* 禁止将本项目用于攻击与骚扰行为
+* 遵守 Robots 协议，禁止将本项目用于采集法律或系统 Robots 协议不允许的数据
+
+使用本项目发生的一切行为均由使用人自行负责。
+因使用本项目进行任何行为所产生的一切纠纷及后果均与版权持有人无关，
+版权持有人不承担任何使用本项目带来的风险和损失。
+版权持有人不对本项目可能存在的缺陷导致的任何损失负任何责任。
+
+---------------------------------------------------------
+
+Copyright (c) 2025, stealth-page contributors
+All rights reserved.
+
+The API design of this project is inspired by DrissionPage
+(https://github.com/g1879/DrissionPage), created by g1879.
+The Python source code under the reference/ directory is the original
+DrissionPage v4.1.1.2 code, subject to the original DrissionPage license.
+
+The Node.js/TypeScript code of stealth-page is an independent implementation,
+subject to the following terms:
+
+Anyone may use or distribute the source code of this project in their
+personal capacity, but only for the purpose of learning and legal
+non-profit activities.
+
+An individual or organization may not use the project's source code or
+binary form for commercial purposes without authorization from the
+copyright holder.
+
+The following terms and conditions must be met in order to use this project.
+Authorization will automatically expire if any of the terms are violated
+during use.
+
+* It is strictly prohibited to use this project for any project that may
+  violate local laws and ethical constraints.
+* It is strictly prohibited to use this project for any project that may
+  harm the interests of others.
+* It is strictly prohibited to use this project for attack and harassment.
+* Follow the Robots protocol and do not use this project to collect data
+  that is prohibited by law or the system's Robots protocol.
+
+All actions taken using this project are the responsibility of the user.
+The copyright holder is not involved in any disputes or consequences arising
+from the use of this project for any actions, and the copyright holder shall
+not bear any risks and losses arising from the use of this project.
+The copyright holder shall not bear any responsibility for any losses
+resulting from any defects in this project.

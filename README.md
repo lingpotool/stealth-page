@@ -648,4 +648,6 @@ sp.set.cookies(cookies)
 
 ## License
 
-MIT
+本项目采用自定义许可证，仅限个人学习和合法非盈利用途。详见 [LICENSE](./LICENSE)。
+
+API 设计参考 [DrissionPage](https://github.com/g1879/DrissionPage)（g1879），`reference/` 目录下的 Python 源码受 DrissionPage 原始许可证约束。
