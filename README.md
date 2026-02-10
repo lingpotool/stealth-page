@@ -108,6 +108,7 @@ await page.get(url, { retry, interval, timeout })
 await page.back(steps)
 await page.forward(steps)
 await page.refresh(ignoreCache)
+await page.reload()                   // refresh 别名
 await page.stop_loading()
 
 // --- 页面信息 ---
@@ -124,6 +125,9 @@ const els = await page.eles(locator)
 const el = await page.s_ele(locator)  // SessionElement (cheerio 解析)
 const els = await page.s_eles(locator)
 const el = await page.active_ele()    // 当前焦点元素
+const text = await page.ele_text(locator)   // 快捷获取文本
+const html = await page.ele_html(locator)   // 快捷获取 HTML
+const attrs = await page.eles_attrs(locator, ['href', 'title'])
 
 // --- JavaScript ---
 await page.run_js(script, ...args)
@@ -132,9 +136,9 @@ await page.run_async_js(script, ...args)
 await page.run_cdp(cmd, params)
 await page.run_cdp_loaded(cmd, params)
 
-// --- 截图 ---
+// --- 截图 / 保存 ---
 await page.screenshot(path)
-await page.save({ path, name, asBytes, asBase64, fullPage, leftTop, rightBottom })
+await page.save({ path, name, asPdf, landscape, printBackground, scale })
 
 // --- Tab 管理 ---
 await page.new_tab(url, { newWindow, background })
@@ -172,11 +176,20 @@ const id = await page.add_init_js(script)
 await page.remove_init_js(id)
 
 // --- 弹窗 ---
-await page.handle_alert(accept, sendText, timeout, nextOne)
+await page.handle_alert(accept, promptText, timeout, nextOne)
 
 // --- 连接 ---
 page.disconnect()
 await page.reconnect(wait)
+
+// --- 浏览器信息 ---
+await page.browser_version()
+await page.process_id()
+await page.latest_tab()
+
+// --- 地理位置 ---
+await page.set_geolocation(latitude, longitude, accuracy)
+await page.clear_geolocation()
 
 // --- 属性 ---
 page.browser                          // Chromium 实例
@@ -194,17 +207,32 @@ page.address
 page.set.timeouts(base, pageLoad, script)
 page.set.retry_times(n)
 page.set.retry_interval(n)
-page.set.download_path(path)
+await page.set.download_path(path)
 page.set.download_file_name(name, suffix)
 page.set.when_download_file_exists(mode)  // 'rename' | 'overwrite' | 'skip'
 page.set.scroll.smooth(on)
 page.set.scroll.wait_complete(on)
+await page.set.user_agent(ua, platform)
+await page.set.headers(headers)
+await page.set.window_size(width, height)
+await page.set.load_mode(mode)        // 'normal' | 'eager' | 'none'
+await page.set.blocked_urls(urls)
+await page.set.auto_handle_alert(onOff, accept)
+await page.set.session_storage(key, value)
+await page.set.local_storage(key, value)
+await page.set.upload_files(files)
+page.set.cookies                      // CookiesSetter 对象
+page.set.window                       // WindowSetter 对象
+page.set.load_mode_setter             // PageLoadMode 对象
 
 // --- page.scroll ---
 await page.scroll.to_top()
 await page.scroll.to_bottom()
 await page.scroll.to_half()
+await page.scroll.to_rightmost()
+await page.scroll.to_leftmost()
 await page.scroll.to_location(x, y)
+await page.scroll.to_see(locOrEle, center)
 await page.scroll.up(pixel)
 await page.scroll.down(pixel)
 await page.scroll.left(pixel)
@@ -217,49 +245,80 @@ await page.wait.ele(locator, timeout)
 await page.wait.ele_displayed(locator, timeout)
 await page.wait.ele_hidden(locator, timeout)
 await page.wait.ele_deleted(locator, timeout)
-await page.wait.url_change(text, timeout)
-await page.wait.title_change(text, timeout)
-await page.wait.download_begin(timeout)
-await page.wait.loaded(timeout)
+await page.wait.eles_loaded(locators, timeout, anyOne)
+await page.wait.url_change(text, exclude, timeout)
+await page.wait.title_change(text, exclude, timeout)
+await page.wait.download_begin(timeout, cancelIt)
+await page.wait.downloads_done(timeout, cancelIfTimeout)
+await page.wait.all_downloads_done(timeout, cancelIfTimeout)
+await page.wait.load_start(timeout)
+await page.wait.doc_loaded(timeout)
+await page.wait.load(timeoutMs)
 await page.wait.new_tab(timeout)
+await page.wait.alert(timeout)
+await page.wait.alert_closed(timeout)
+await page.wait.upload_paths_inputted()
 
 // --- page.states ---
-await page.states.is_loading
+await page.states.is_loading          // getter 返回 Promise
 await page.states.is_alive
 await page.states.ready_state
 await page.states.has_alert
 await page.states.url_available
+await page.states.is_headless
+await page.states.is_incognito
 
 // --- page.rect ---
 await page.rect.window_size()
 await page.rect.viewport_size()
 await page.rect.page_size()
+await page.rect.screen_size()
+await page.rect.screen_available_size()
 await page.rect.scroll_position()
 await page.rect.window_state()
 await page.rect.window_location()
+await page.rect.viewport_location()
+await page.rect.page_location()
 
 // --- page.window ---
-await page.window.maximize()
-await page.window.minimize()
-await page.window.fullscreen()
-await page.window.normal()
-await page.window.set_size(width, height)
-await page.window.set_location(x, y)
+await page.window.max()               // 最大化
+await page.window.mini()              // 最小化
+await page.window.full()              // 全屏
+await page.window.normal()            // 恢复
+await page.window.size(width, height)
+await page.window.location(x, y)
+await page.window.hide()
+await page.window.show()
+await page.window.getSize()
+await page.window.getLocation()
+await page.window.getState()
 
 // --- page.listen ---
-page.listen.start(targets)
+page.listen.set_targets(targets)      // 设置监听目标 URL
+page.listen.start(options)            // { targets, isRegex, method, resType }
 page.listen.stop()
-page.listen.wait(timeout, count)
-page.listen.steps(timeout, count, gap)
+page.listen.pause(clear)
+page.listen.resume()
+await page.listen.wait(count, timeout, fitCount)
+for await (const p of page.listen.steps_gen(count, timeout, gap)) {}
+page.listen.packets                   // 已捕获的数据包
+page.listen.steps                     // 步骤记录
+page.listen.listening                 // 是否在监听
+page.listen.clear()
 
 // --- page.actions ---
 await page.actions.move_to(eleOrLoc, offsetX, offsetY, duration)
+await page.actions.move(x, y)
 await page.actions.move_by(offsetX, offsetY, duration)
 await page.actions.click(onEle, times)
 await page.actions.r_click(onEle, times)
 await page.actions.m_click(onEle, times)
 await page.actions.hold(onEle)
 await page.actions.release(onEle)
+await page.actions.r_hold(onEle)
+await page.actions.r_release(onEle)
+await page.actions.m_hold(onEle)
+await page.actions.m_release(onEle)
 await page.actions.type(keys, interval)
 await page.actions.input(text)
 await page.actions.key_down(key)
@@ -271,17 +330,27 @@ await page.actions.down(pixel)
 await page.actions.left(pixel)
 await page.actions.right(pixel)
 await page.actions.wait(second, scope)
+page.actions.curr_x                   // 当前鼠标 X
+page.actions.curr_y                   // 当前鼠标 Y
 
 // --- page.screencast ---
-page.screencast.set.mode(mode)        // 'video' | 'frugal_video' | 'imgs'
+page.screencast.set_mode.video_mode()
+page.screencast.set_mode.frugal_video_mode()
+page.screencast.set_mode.imgs_mode()
+page.screencast.set_mode.frugal_imgs_mode()
+page.screencast.set_save_path(path)
 page.screencast.start(savePath)
-page.screencast.stop()
+await page.screencast.stop(videoName)
+page.screencast.running               // 是否在录制
 
 // --- page.console ---
-page.console.start()
-page.console.stop()
-page.console.messages
+await page.console.start()
+await page.console.stop()
+page.console.messages                 // 获取并清空已捕获消息
 page.console.clear()
+page.console.listening                // 是否在监听
+await page.console.wait(timeout)      // 等待一条消息
+for await (const msg of page.console.steps(timeout)) {}  // 迭代消息
 ```
 
 ### Element
@@ -329,21 +398,29 @@ await el.click.for_url_change(text, exclude, byJs, timeout)
 await el.click.for_title_change(text, exclude, byJs, timeout)
 
 // --- 滚动 el.scroll ---
-await el.scroll.to_see()
+await el.scroll.to_see(center)        // center: true|false|null
 await el.scroll.to_center()
 await el.scroll.to_top()
 await el.scroll.to_bottom()
+await el.scroll.to_half()
+await el.scroll.to_rightmost()
+await el.scroll.to_leftmost()
+await el.scroll.to_location(x, y)
 await el.scroll.up(pixel)
 await el.scroll.down(pixel)
+await el.scroll.left(pixel)
+await el.scroll.right(pixel)
 
 // --- 状态 el.states ---
-await el.states.is_displayed
+await el.states.is_displayed          // getter 返回 Promise
 await el.states.is_enabled
 await el.states.is_selected
 await el.states.is_checked
 await el.states.is_alive
 await el.states.is_clickable
 await el.states.is_in_viewport
+await el.states.is_whole_in_viewport
+await el.states.is_covered
 await el.states.has_rect
 
 // --- 位置 el.rect ---
@@ -353,8 +430,10 @@ await el.rect.screen_location()       // 屏幕坐标
 await el.rect.size()
 await el.rect.midpoint()
 await el.rect.viewport_midpoint()
+await el.rect.screen_midpoint()
 await el.rect.click_point()
 await el.rect.viewport_click_point()
+await el.rect.screen_click_point()
 await el.rect.corners()
 await el.rect.viewport_corners()
 await el.rect.scroll_position()
@@ -370,20 +449,31 @@ await el.set.value(val)
 await el.wait.displayed(timeout)
 await el.wait.hidden(timeout)
 await el.wait.deleted(timeout)
-await el.wait.clickable(timeout)
+await el.wait.clickable(waitMoved, timeout)
+await el.wait.enabled(timeout)
 await el.wait.disabled(timeout)
-await el.wait.stop_moving(timeout)
+await el.wait.disabled_or_deleted(timeout)
+await el.wait.stop_moving(timeout, gap)
 await el.wait.covered(timeout)
 await el.wait.not_covered(timeout)
+await el.wait.has_rect(timeout)
 
 // --- 下拉列表 el.select ---
-await el.select.by_text(text)
+await el.select.by_text(text)         // 支持 string | string[]
 await el.select.by_value(value)
-await el.select.by_index(index)
+await el.select.by_index(index)       // 支持 number | number[]
+await el.select.cancel_by_text(text)
+await el.select.cancel_by_value(value)
+await el.select.cancel_by_index(index)
+await el.select.by_locator(locator)
+await el.select.cancel_by_locator(locator)
 await el.select.options()
 await el.select.selected_option()
+await el.select.selected_options()
 await el.select.is_multi()
+await el.select.all()                 // 全选（多选框）
 await el.select.clear()
+await el.select.invert()              // 反选（多选框）
 
 // --- 伪元素 el.pseudo ---
 await el.pseudo.before
@@ -466,13 +556,30 @@ await sr.states.is_enabled
 ```javascript
 const frame = await page.get_frame('#iframe-id');
 
+// 基础信息
 await frame.url()
 await frame.title()
 await frame.html()
+await frame.inner_html()
+await frame.tag()
+await frame.attr(name)
+await frame.attrs()
+frame.frameId                         // frame ID
+frame.frame_ele                       // 对应的 iframe Element
+
+// 元素查找
 await frame.ele(locator, index)
 await frame.eles(locator)
+
+// JavaScript
 await frame.run_js(script, ...args)
+await frame.run_async_js(script, ...args)
+
+// 截图
 await frame.screenshot(path)
+
+// 刷新
+await frame.refresh()
 
 // 状态（FrameStates）
 await frame.states.is_alive
@@ -483,6 +590,23 @@ await frame.states.ready_state
 // 滚动
 await frame.scroll.to_top()
 await frame.scroll.to_bottom()
+await frame.scroll.up(pixel)
+await frame.scroll.down(pixel)
+
+// 位置
+await frame.rect.window_size()
+await frame.rect.viewport_size()
+
+// DOM 导航（基于 frame 元素）
+await frame.parent(level)
+await frame.prev(locator, index)
+await frame.next(locator, index)
+await frame.prevs(locator)
+await frame.nexts(locator)
+await frame.before(locator, index)
+await frame.after(locator, index)
+await frame.befores(locator)
+await frame.afters(locator)
 ```
 
 ### Chromium（浏览器实例）
@@ -512,13 +636,24 @@ browser.user_data_path
 browser.download_path
 
 // 状态
-browser.states.is_alive
-browser.states.is_headless
+browser.states.is_alive               // 同步 getter
+browser.states.is_headless            // 同步 getter
+browser.states.is_incognito           // 同步 getter
+await browser.states.tabs_count()
+await browser.states.version()
+await browser.states.user_agent()
 
 // 设置
 browser.set.download_path(path)
-browser.set.cookies(cookies)
-browser.set.delete_all_cookies()
+browser.set.download_file_name(name, suffix)
+browser.set.when_download_file_exists(mode)
+browser.set.timeouts(base, pageLoad, script)
+browser.set.retry_times(n)
+browser.set.retry_interval(n)
+browser.set.auto_handle_alert(onOff, accept)
+browser.set.cookies                   // BrowserCookiesSetter 对象
+browser.set.window                    // WindowSetter 对象
+browser.set.load_mode                 // LoadMode 对象
 
 // 清理
 await browser.clear_cache({ cache, cookies })
@@ -569,23 +704,38 @@ await tab.init();
 ### WebPage / MixTab
 
 ```javascript
-const { WebPage } = require('stealth-page');
+const { WebPage, MixTab } = require('stealth-page');
 
-const wp = new WebPage('127.0.0.1:9222');
+// WebPage 构造: (mode, timeout, chromiumOptions, sessionOptions)
+const wp = new WebPage('d', null, chromiumOptions, sessionOptions);
 
 // 模式切换
-await wp.change_mode()                // 在 d 模式和 s 模式间切换
+wp.change_mode()                      // 同步，在 d 模式和 s 模式间切换
+wp.change_mode('s')                   // 切换到指定模式
 wp.mode                               // 'd' 或 's'
 
 // d 模式（浏览器）下与 ChromiumPage 相同
 // s 模式（session）下使用 HTTP 请求
 await wp.get(url)
-await wp.post(url, data, headers)
+await wp.post(url, { data, json, headers })
+await wp.put(url, { data, headers })
+await wp.delete(url, { headers })
 await wp.ele(locator)
 await wp.html()
-await wp.cookies
-await wp.cookies_to_session()
-await wp.cookies_to_browser()
+await wp.title()
+await wp.url()
+await wp.cookies()                    // 异步方法
+await wp.json()
+
+// MixTab（标签页级别的混合模式）
+const tab = new MixTab(browser, tabId, sessionOptions);
+await tab.change_mode()               // 异步，支持 go 和 copyCookies 参数
+await tab.cookies_to_session()
+await tab.cookies_to_browser()
+tab.session                           // 内部 SessionPage 实例
+tab.response_headers
+tab.status
+tab.raw_data
 ```
 
 ### SessionPage
@@ -594,17 +744,45 @@ await wp.cookies_to_browser()
 const { SessionPage } = require('stealth-page');
 
 const sp = new SessionPage();
-await sp.get(url, { headers, params, timeout })
-await sp.post(url, { data, json, headers })
-await sp.put(url, { data, json, headers })
+await sp.get(url, { headers })
+await sp.post(url, { headers, body, json })
+await sp.put(url, { headers, body })
 await sp.delete(url, { headers })
-await sp.html()
-await sp.json()
+
+// 同步 getter（非异步）
+sp.html                               // string | null
+sp.title                              // string | null
+sp.url                                // string | null
+sp.json                               // any
+sp.status                             // number | null
+sp.raw_data                           // string | null
+sp.response_headers                   // object | null
+sp.user_agent                         // string
+sp.encoding                           // string
+
+// 元素查找
 await sp.ele(locator)
 await sp.eles(locator)
-sp.cookies
-sp.set.headers(headers)
-sp.set.cookies(cookies)
+await sp.s_ele(locator)
+await sp.s_eles(locator)
+
+// cookies
+await sp.cookies()                    // 异步方法
+await sp.set_cookies([{ name, value, domain, path }])
+sp.clear_cookies()
+
+// 设置
+sp.set.headers(headers)               // Record 或浏览器复制的文本
+sp.set.header(name, value)
+sp.set.user_agent(ua)
+sp.set.timeout(second)
+sp.set.encoding(encoding)
+sp.set.download_path(path)
+sp.set.retry_times(n)
+sp.set.retry_interval(n)
+sp.set.proxies(http, https)
+
+sp.close()
 ```
 
 ## 与 DrissionPage 的对应关系
