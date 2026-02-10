@@ -10,6 +10,12 @@ export declare class ChromiumPageActions {
     private _modifier;
     private _holding;
     constructor(page: ChromiumPage);
+    /** 返回使用此动作链的页面对象 */
+    get owner(): ChromiumPage;
+    /** 当前光标 x 坐标 */
+    get curr_x(): number;
+    /** 当前光标 y 坐标 */
+    get curr_y(): number;
     /**
      * 移动到指定坐标或元素（对齐 DrissionPage Actions.move_to）
      * 使用视口坐标，与 Input.dispatchMouseEvent 一致

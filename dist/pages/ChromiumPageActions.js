@@ -14,6 +14,18 @@ class ChromiumPageActions {
         this._holding = "left";
         this._page = page;
     }
+    /** 返回使用此动作链的页面对象 */
+    get owner() {
+        return this._page;
+    }
+    /** 当前光标 x 坐标 */
+    get curr_x() {
+        return this._currX;
+    }
+    /** 当前光标 y 坐标 */
+    get curr_y() {
+        return this._currY;
+    }
     /**
      * 移动到指定坐标或元素（对齐 DrissionPage Actions.move_to）
      * 使用视口坐标，与 Input.dispatchMouseEvent 一致
