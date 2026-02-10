@@ -72,9 +72,10 @@ await page.ele('#id')
 await page.ele('.class')
 await page.ele('tag:div')
 await page.ele('@name=value')        // 属性精确匹配
+await page.ele('@name:value')        // 属性包含匹配
 await page.ele('@name^value')        // 属性开头匹配
 await page.ele('@name$value')        // 属性结尾匹配
-await page.ele('@name*value')        // 属性包含匹配
+await page.ele('@name*value')        // 属性包含匹配（* 是 : 的别名）
 
 // 文本定位
 await page.ele('text:关键词')         // 文本包含
@@ -529,6 +530,8 @@ await el.remove_attr(name)
 
 ### ShadowRoot
 
+> Shadow DOM 内建议使用 CSS 选择器（如 `css:span`、`css:.class`），XPath 在 shadow root 内也可用但依赖 `document.evaluate`。
+
 ```javascript
 const sr = await el.shadow_root();
 
@@ -536,8 +539,8 @@ sr.tag                                // 'shadow-root'
 sr.parent_ele                         // 宿主元素
 await sr.inner_html()
 await sr.html()
-await sr.ele(locator, index)
-await sr.eles(locator)
+await sr.ele(locator, index)          // 推荐: sr.ele('css:span')
+await sr.eles(locator)                // 推荐: sr.eles('css:*')
 await sr.run_js(script, ...args)
 await sr.run_async_js(script, ...args)
 await sr.child(locatorOrIndex, index)
