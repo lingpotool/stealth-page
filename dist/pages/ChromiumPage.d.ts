@@ -100,7 +100,7 @@ export declare class ChromiumPage {
         asId?: boolean;
     }): Promise<ChromiumTab | string | null>;
     close(): Promise<void>;
-    run_js(script: string): Promise<any>;
+    run_js(script: string, ...args: any[]): Promise<any>;
     set_cookies(cookies: Array<{
         name: string;
         value: string;

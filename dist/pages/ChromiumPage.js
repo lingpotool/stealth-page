@@ -375,9 +375,9 @@ class ChromiumPage {
             }
         }
     }
-    async run_js(script) {
+    async run_js(script, ...args) {
         await this.init();
-        return this._page.runJs(script);
+        return this._page.runJs(script, ...args);
     }
     async set_cookies(cookies) {
         await this.init();

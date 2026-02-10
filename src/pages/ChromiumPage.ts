@@ -389,9 +389,9 @@ export class ChromiumPage {
     }
   }
 
-  async run_js(script: string): Promise<any> {
+  async run_js(script: string, ...args: any[]): Promise<any> {
     await this.init();
-    return this._page!.runJs(script);
+    return this._page!.runJs(script, ...args);
   }
 
   async set_cookies(cookies: Array<{ name: string; value: string; domain?: string; path?: string }>): Promise<void> {

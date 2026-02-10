@@ -61,6 +61,7 @@
   <div class="item" id="item3">项目3</div>
   
   <a id="link" href="https://example.com">链接</a>
+  <img id="test-img" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" alt="测试图片">
   
   <div id="hidden-element" class="hidden">隐藏元素</div>
   
@@ -71,5 +72,43 @@
       <li class="list-item">列表项3</li>
     </ul>
   </div>
-</body>
-</html>
+
+  <!-- 新增：用于测试 texts() -->
+  <div id="mixed-text">
+    文本节点1
+    <span>子元素文本</span>
+    文本节点2
+  </div>
+
+  <!-- 新增：用于测试 set.innerHTML / set.property / set.style / set.value -->
+  <div id="setter-test">原始内容</div>
+  <input type="text" id="setter-input" value="原始值">
+
+  <!-- 新增：用于测试 pointer-events: none (is_clickable) -->
+  <div id="no-pointer" style="pointer-events: none; width: 50px; height: 50px;">不可点击</div>
+  <div id="yes-pointer" style="width: 50px; height: 50px;">可点击</div>
+
+  <!-- 新增：用于测试 shadow DOM -->
+  <div id="shadow-host"></div>
+  <script>
+    // 创建 shadow DOM
+    const host = document.getElementById('shadow-host');
+    if (host && host.attachShadow) {
+      const shadow = host.attachShadow({ mode: 'open' });
+      shadow.innerHTML = '<span id="shadow-child">Shadow内容</span>';
+    }
+  </script>
+
+  <!-- 新增：用于测试 localStorage / sessionStorage -->
+  <script>
+    localStorage.setItem('test-key', 'test-value');
+    sessionStorage.setItem('session-key', 'session-value');
+  </script>
+
+  <!-- 新增：用于测试 run_js 带参数 -->
+  <div id="js-args-test">0</div>
+
+  <!-- 新增：大量内容用于确保页面可滚动 -->
+  <div style="height: 2000px; background: linear-gradient(white, lightblue);">
+    <div id="far-bottom" style="position: relative; top: 1900px;">底部元素</div>
+  </div>
