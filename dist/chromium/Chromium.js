@@ -240,7 +240,7 @@ class Chromium {
         }
         const result = await this._cdpSession.send("Browser.getVersion");
         return {
-            browser: result.browser,
+            browser: result.product,
             protocol: result.protocolVersion,
             userAgent: result.userAgent,
         };

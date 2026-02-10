@@ -238,12 +238,12 @@ export class Chromium {
       throw new Error("Chromium is not connected yet.");
     }
     const result = await this._cdpSession.send<{
-      browser: string;
+      product: string;
       protocolVersion: string;
       userAgent: string;
     }>("Browser.getVersion");
     return {
-      browser: result.browser,
+      browser: result.product,
       protocol: result.protocolVersion,
       userAgent: result.userAgent,
     };

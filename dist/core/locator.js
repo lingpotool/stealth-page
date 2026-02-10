@@ -145,14 +145,16 @@ function _quotesEscape(searchStr) {
  * 返回 [name, operator, value] 或 [name, null, null]
  */
 function _parseArg(text) {
-    const match = text.match(/^([^:=$^]+)([:=$^])(.*)$/);
+    const match = text.match(/^([^:=$^*]+)([:=$^*])(.*)$/);
     if (match) {
         let name = match[1];
         if (name === "tx()")
             name = "text()";
         if (name === "t()")
             name = "tag()";
-        return [name, match[2], match[3]];
+        // * 是 : 的别名（contains 匹配）
+        const symbol = match[2] === "*" ? ":" : match[2];
+        return [name, symbol, match[3]];
     }
     let name = text;
     if (name === "tx()")

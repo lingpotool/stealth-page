@@ -102,23 +102,8 @@ class ShadowRoot {
         if (parsed.type === "xpath") {
             return this._elesByXPath(parsed.value);
         }
-        // CSS 选择器
-        const nodeId = await this._getNodeId();
-        try {
-            const { nodeIds } = await this._session.send("DOM.querySelectorAll", {
-                nodeId,
-                selector: parsed.value,
-            });
-            return nodeIds
-                .filter((id) => id > 0)
-                .map((id) => {
-                const el = new Element_1.Element(this._session, { nodeId: id }, this._page);
-                return el;
-            });
-        }
-        catch {
-            return [];
-        }
+        // CSS 选择器 — 使用 Runtime.callFunctionOn 在 shadow root 上执行 querySelectorAll
+        return this._elesByCss(parsed.value);
     }
     /**
      * 获取父元素
@@ -204,6 +189,42 @@ class ShadowRoot {
         });
         this._nodeId = nodeId;
         return nodeId;
+    }
+    async _elesByCss(selector) {
+        const objectId = await this._getObjectId();
+        const escapedSelector = selector.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+        const { result } = await this._session.send("Runtime.callFunctionOn", {
+            objectId,
+            functionDeclaration: `function() { return Array.from(this.querySelectorAll('${escapedSelector}')); }`,
+            returnByValue: false,
+        });
+        if (!result.objectId || result.subtype === "null") {
+            return [];
+        }
+        const { result: propsResult } = await this._session.send("Runtime.getProperties", {
+            objectId: result.objectId,
+            ownProperties: true,
+        });
+        const elements = [];
+        await this._session.send("DOM.getDocument", { depth: -1 });
+        for (const prop of propsResult) {
+            if (prop.name === "length" || !prop.value?.objectId || isNaN(Number(prop.name)))
+                continue;
+            if (prop.value.type !== "object")
+                continue;
+            try {
+                const { nodeId } = await this._session.send("DOM.requestNode", {
+                    objectId: prop.value.objectId,
+                });
+                if (nodeId > 0) {
+                    elements.push(new Element_1.Element(this._session, { nodeId }, this._page));
+                }
+            }
+            catch {
+                // 跳过无效元素
+            }
+        }
+        return elements;
     }
     async _elesByXPath(xpath) {
         // Shadow DOM 内的 XPath 查找

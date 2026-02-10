@@ -76,5 +76,6 @@ export declare class ShadowRoot {
     toString(): string;
     private _getObjectId;
     private _getNodeId;
+    private _elesByCss;
     private _elesByXPath;
 }

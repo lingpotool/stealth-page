@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>stealth-page 全功能测试页面</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Microsoft YaHei', sans-serif; padding: 20px; color: #333; }
+    h1 { margin-bottom: 10px; }
+    h2 { margin: 20px 0 10px; padding: 5px 10px; background: #e8e8e8; border-left: 4px solid #4a90d9; }
+    section { margin-bottom: 20px; padding: 10px; border: 1px solid #ddd; border-radius: 4px; }
+    label { display: inline-block; margin-right: 10px; }
+    input, textarea, select, button { margin: 4px; padding: 4px 8px; }
+    .hidden { display: none; }
+    .invisible { visibility: hidden; width: 50px; height: 20px; }
+    .no-pointer { pointer-events: none; }
+    .flex-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .box { width: 60px; height: 60px; display: inline-flex; align-items: center; justify-content: center;
+           border: 1px solid #999; font-size: 12px; text-align: center; }
+    .red { background: #f88; }
+    .green { background: #8f8; }
+    .blue { background: #88f; color: #fff; }
+    .yellow { background: #ff8; }
+    #positioned-area { position: relative; height: 180px; margin: 10px 0; }
+    #pos-center { position: absolute; left: 150px; top: 50px; }
+    #pos-east   { position: absolute; left: 250px; top: 50px; }
+    #pos-west   { position: absolute; left: 50px;  top: 50px; }
+    #pos-north  { position: absolute; left: 150px; top: 0; }
+    #pos-south  { position: absolute; left: 150px; top: 110px; }
+    #scrollable-div { width: 300px; height: 150px; overflow: auto; border: 2px solid #666; }
+    #scroll-inner { width: 800px; height: 800px; background: linear-gradient(135deg, #fff, #4a90d9); position: relative; }
+    #scroll-inner-bottom { position: absolute; bottom: 10px; right: 10px; }
+    #cover-target { position: relative; width: 100px; height: 40px; background: #cfc; z-index: 1; }
+    #cover-overlay { position: absolute; top: 0; left: 0; width: 100px; height: 40px; background: rgba(255,0,0,0.5); z-index: 2; }
+    #pseudo-el::before { content: "BEFORE伪元素"; color: red; }
+    #pseudo-el::after { content: "AFTER伪元素"; color: blue; }
+    #drag-source { width: 80px; height: 40px; background: #f90; cursor: move; text-align: center; line-height: 40px; }
+    #drag-target { width: 120px; height: 60px; background: #eee; border: 2px dashed #999; text-align: center; line-height: 60px; }
+    #alert-result { color: green; font-weight: bold; }
+    .tab-link { color: blue; text-decoration: underline; cursor: pointer; }
+    #console-trigger { cursor: pointer; color: purple; }
+    #hover-box { width: 100px; height: 40px; background: #ddd; text-align: center; line-height: 40px; transition: background 0.2s; }
+    #hover-box:hover { background: #ff0; }
+    #focus-input:focus { outline: 3px solid #4a90d9; }
+    table { border-collapse: collapse; margin: 10px 0; }
+    td, th { border: 1px solid #ccc; padding: 6px 12px; }
+  </style>
+</head>
+<body>
+
+<!-- ==================== 1. 基础信息 ==================== -->
+<h1 id="main-title">stealth-page 全功能 Demo</h1>
+<p id="description" class="text-content" data-info="demo-page" data-version="1.0">
+  这是一个用于测试 stealth-page 所有 API 的综合页面。
+</p>
+
+<section id="sec-basic">
+  <h2>1. 基础元素 & 属性</h2>
+  <div id="text-div">纯文本内容</div>
+  <div id="mixed-text">
+    文本节点A
+    <span>子元素文本</span>
+    文本节点B
+    <em>强调文本</em>
+  </div>
+  <a id="link1" href="https://example.com" title="示例链接">链接到Example</a>
+  <a id="link2" href="https://github.com/lingpotool/stealth-page">项目地址</a>
+  <img id="test-img" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==" alt="1px测试图">
+  <div id="styled-div" style="color: red; font-size: 16px; margin-top: 5px;">带样式的div</div>
+</section>
+
+<!-- ==================== 2. 表单元素 ==================== -->
+<section id="sec-form">
+  <h2>2. 表单元素</h2>
+  <div class="flex-row">
+    <label>文本输入: <input type="text" id="text-input" value="初始值" placeholder="请输入"></label>
+    <label>空输入: <input type="text" id="empty-input" value=""></label>
+    <label>密码: <input type="password" id="pwd-input" value="secret"></label>
+    <label>数字: <input type="number" id="num-input" value="42"></label>
+  </div>
+  <div class="flex-row">
+    <label><input type="checkbox" id="cb-checked" checked> 已勾选</label>
+    <label><input type="checkbox" id="cb-unchecked"> 未勾选</label>
+    <label><input type="radio" name="radio-group" id="radio-a" value="A" checked> A</label>
+    <label><input type="radio" name="radio-group" id="radio-b" value="B"> B</label>
+  </div>
+  <div class="flex-row">
+    <label>文件: <input type="file" id="file-input"></label>
+    <label>多文件: <input type="file" id="multi-file-input" multiple></label>
+  </div>
+  <div class="flex-row">
+    <textarea id="textarea" rows="3" cols="30">多行文本内容</textarea>
+  </div>
+  <div class="flex-row">
+    <label id="focus-label">聚焦测试: <input type="text" id="focus-input" value=""></label>
+  </div>
+  <div class="flex-row">
+    <button id="btn-click" onclick="this.textContent='已点击'; this.dataset.clicked='true'">点击我</button>
+    <button id="btn-disabled" disabled>禁用按钮</button>
+    <button id="btn-counter" onclick="this.dataset.count = (parseInt(this.dataset.count||0)+1); this.textContent='点击'+this.dataset.count+'次'" data-count="0">点击0次</button>
+    <button id="btn-right" oncontextmenu="this.textContent='右键点击'; return false;">右键点击我</button>
+  </div>
+</section>
+
+<!-- ==================== 3. 下拉列表 ==================== -->
+<section id="sec-select">
+  <h2>3. 下拉列表 (Select)</h2>
+  <div class="flex-row">
+    <label>单选:
+      <select id="single-select">
+        <option value="v1">选项1</option>
+        <option value="v2" selected>选项2</option>
+        <option value="v3">选项3</option>
+        <option value="v4">选项4</option>
+      </select>
+    </label>
+    <label>多选:
+      <select id="multi-select" multiple size="4">
+        <option value="a">苹果</option>
+        <option value="b" selected>香蕉</option>
+        <option value="c" selected>橙子</option>
+        <option value="d">葡萄</option>
+      </select>
+    </label>
+  </div>
+</section>
+
+<!-- ==================== 4. DOM 导航 ==================== -->
+<section id="sec-dom-nav">
+  <h2>4. DOM 导航</h2>
+  <div id="nav-parent">
+    <span id="nav-prev">前一个</span>
+    <span id="nav-target" class="target-class">目标元素</span>
+    <span id="nav-next">后一个</span>
+  </div>
+  <div id="nav-tree">
+    <div id="tree-root">
+      <div id="tree-child1" class="tree-node">
+        <span id="tree-leaf1">叶子1</span>
+        <span id="tree-leaf2">叶子2</span>
+      </div>
+      <div id="tree-child2" class="tree-node">
+        <span id="tree-leaf3">叶子3</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== 5. 定位符测试 ==================== -->
+<section id="sec-locator">
+  <h2>5. 定位符语法测试</h2>
+  <div class="loc-test" data-type="css">CSS定位</div>
+  <div class="loc-test" data-type="text">文本定位测试</div>
+  <div class="loc-test" data-type="xpath">XPath定位</div>
+  <div data-start="hello-world">属性开头匹配</div>
+  <div data-end="world-end">属性结尾匹配</div>
+  <div data-contain="middle-part-here">属性包含匹配</div>
+  <input type="text" id="tag-attr-input" name="username" value="test-user">
+  <ul id="xpath-list">
+    <li class="xpath-item">XPath项1</li>
+    <li class="xpath-item">XPath项2</li>
+    <li class="xpath-item">XPath项3</li>
+  </ul>
+</section>
+
+<!-- ==================== 6. 方向定位 ==================== -->
+<section id="sec-direction">
+  <h2>6. 方向定位 (east/west/north/south)</h2>
+  <div id="positioned-area">
+    <div id="pos-north" class="box yellow">北</div>
+    <div id="pos-west" class="box red">西</div>
+    <div id="pos-center" class="box green">中心</div>
+    <div id="pos-east" class="box blue">东</div>
+    <div id="pos-south" class="box yellow">南</div>
+  </div>
+</section>
+
+<!-- ==================== 7. 滚动测试 ==================== -->
+<section id="sec-scroll">
+  <h2>7. 滚动测试</h2>
+  <div id="scrollable-div">
+    <div id="scroll-inner">
+      <div id="scroll-top-marker">滚动区域顶部</div>
+      <div id="scroll-inner-bottom">滚动区域底部</div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== 8. 状态测试 ==================== -->
+<section id="sec-states">
+  <h2>8. 元素状态测试</h2>
+  <div class="flex-row">
+    <div id="visible-el" class="box green">可见</div>
+    <div id="hidden-el" class="hidden">隐藏(display:none)</div>
+    <div id="invisible-el" class="invisible">不可见(visibility)</div>
+    <div id="no-pointer-el" class="no-pointer box red">无指针事件</div>
+    <div id="zero-size-el" style="width:0;height:0;overflow:hidden;">零尺寸</div>
+  </div>
+  <div style="position:relative; display:inline-block; margin-top:10px;">
+    <div id="cover-target">被覆盖目标</div>
+    <div id="cover-overlay">覆盖层</div>
+  </div>
+</section>
+
+<!-- ==================== 9. 伪元素 ==================== -->
+<section id="sec-pseudo">
+  <h2>9. 伪元素测试</h2>
+  <div id="pseudo-el">主内容</div>
+</section>
+
+<!-- ==================== 10. 拖拽 ==================== -->
+<section id="sec-drag">
+  <h2>10. 拖拽测试</h2>
+  <div class="flex-row">
+    <div id="drag-source" draggable="true">拖我</div>
+    <div id="drag-target">放这里</div>
+  </div>
+</section>
+
+<!-- ==================== 11. Hover ==================== -->
+<section id="sec-hover">
+  <h2>11. Hover 测试</h2>
+  <div id="hover-box" onmouseenter="this.dataset.hovered='true'" onmouseleave="this.dataset.hovered='false'">悬停我</div>
+</section>
+
+<!-- ==================== 12. 弹窗 ==================== -->
+<section id="sec-alert">
+  <h2>12. 弹窗测试</h2>
+  <button id="btn-alert" onclick="alert('测试弹窗')">触发 Alert</button>
+  <button id="btn-confirm" onclick="document.getElementById('alert-result').textContent = confirm('确认？') ? '确认' : '取消'">触发 Confirm</button>
+  <button id="btn-prompt" onclick="var r=prompt('输入:','默认值'); document.getElementById('alert-result').textContent=r||'null'">触发 Prompt</button>
+  <span id="alert-result"></span>
+</section>
+
+<!-- ==================== 13. iframe ==================== -->
+<section id="sec-iframe">
+  <h2>13. iframe 测试</h2>
+  <iframe id="test-frame" srcdoc="<!DOCTYPE html><html><head><title>Frame标题</title></head><body><div id='frame-div' class='frame-content'>Frame内部内容</div><span id='frame-span'>Frame文本</span></body></html>" style="width:400px;height:120px;border:2px solid #999;"></iframe>
+</section>
+
+<!-- ==================== 14. Shadow DOM ==================== -->
+<section id="sec-shadow">
+  <h2>14. Shadow DOM 测试</h2>
+  <div id="shadow-host"></div>
+</section>
+
+<!-- ==================== 15. 表格 (eles_attrs 测试) ==================== -->
+<section id="sec-table">
+  <h2>15. 表格 & 批量属性</h2>
+  <table id="data-table">
+    <tr><th>名称</th><th>链接</th></tr>
+    <tr class="data-row"><td>项目A</td><td><a href="https://a.com" title="A链接">A</a></td></tr>
+    <tr class="data-row"><td>项目B</td><td><a href="https://b.com" title="B链接">B</a></td></tr>
+    <tr class="data-row"><td>项目C</td><td><a href="https://c.com" title="C链接">C</a></td></tr>
+  </table>
+</section>
+
+<!-- ==================== 16. Console 测试 ==================== -->
+<section id="sec-console">
+  <h2>16. Console 消息测试</h2>
+  <button id="btn-console-log" onclick="console.log('测试log消息')">console.log</button>
+  <button id="btn-console-warn" onclick="console.warn('测试warn消息')">console.warn</button>
+  <button id="btn-console-error" onclick="console.error('测试error消息')">console.error</button>
+</section>
+
+<!-- ==================== 17. 新标签页链接 ==================== -->
+<section id="sec-newtab">
+  <h2>17. 新标签页测试</h2>
+  <a id="new-tab-link" href="about:blank" target="_blank">在新标签页打开</a>
+</section>
+
+<!-- ==================== 18. Storage 测试 ==================== -->
+<section id="sec-storage">
+  <h2>18. Storage 测试</h2>
+  <div id="storage-info">Storage 已初始化</div>
+</section>
+
+<!-- ==================== 19. Setter 测试 ==================== -->
+<section id="sec-setter">
+  <h2>19. 元素 Setter 测试</h2>
+  <div id="setter-div">原始内容</div>
+  <input type="text" id="setter-input" value="原始值">
+  <div id="setter-style" style="color: black;">样式测试</div>
+</section>
+
+<!-- ==================== 20. 大量内容（页面滚动） ==================== -->
+<section id="sec-page-scroll">
+  <h2>20. 页面滚动测试</h2>
+  <div style="height: 2000px; background: linear-gradient(to bottom, #fff, #4a90d9); position: relative;">
+    <div id="scroll-mid" style="position: absolute; top: 1000px; left: 20px;">页面中间标记</div>
+    <div id="scroll-bottom" style="position: absolute; bottom: 20px; left: 20px;">页面底部标记</div>
+  </div>
+</section>
+
+<!-- ==================== Scripts ==================== -->
+<script>
+  // Shadow DOM
+  (function() {
+    const host = document.getElementById('shadow-host');
+    if (host && host.attachShadow) {
+      const shadow = host.attachShadow({ mode: 'open' });
+      shadow.innerHTML = '<div id="shadow-div"><span id="shadow-span">Shadow内容</span></div><p id="shadow-p">Shadow段落</p>';
+    }
+  })();
+
+  // Storage 初始化
+  localStorage.setItem('demo-key', 'demo-value');
+  localStorage.setItem('demo-key2', 'demo-value2');
+  sessionStorage.setItem('session-key', 'session-value');
+  sessionStorage.setItem('session-key2', 'session-value2');
+
+  // 拖拽事件
+  (function() {
+    const src = document.getElementById('drag-source');
+    const tgt = document.getElementById('drag-target');
+    src.addEventListener('dragstart', e => e.dataTransfer.setData('text', 'dragged'));
+    tgt.addEventListener('dragover', e => e.preventDefault());
+    tgt.addEventListener('drop', e => { e.preventDefault(); tgt.textContent = '已放置'; tgt.dataset.dropped = 'true'; });
+  })();
+</script>
+
+</body>
+</html>
