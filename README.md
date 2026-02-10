@@ -1,6 +1,6 @@
 # stealth-page
 
-Node.js 浏览器自动化库，API 风格对齐 Python [DrissionPage](https://github.com/g1879/DrissionPage)。
+Node.js 浏览器自动化库，API 风格对齐 Python [DrissionPage](https://github.com/g1879/DrissionPage) **v4.1.1.2**。
 
 内置反检测、TypeScript 支持、通过 CDP 连接已有 Chrome 实例。
 
