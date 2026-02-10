@@ -180,7 +180,7 @@ export declare class Element {
     /**
      * 选中/取消选中复选框
      */
-    check(uncheck?: boolean, _byJs?: boolean): Promise<void>;
+    check(uncheck?: boolean, byJs?: boolean): Promise<void>;
     /**
      * 拖拽到相对位置
      */
@@ -250,6 +250,10 @@ export declare class Element {
     src(_timeout?: number, base64ToBytes?: boolean): Promise<Buffer | string | null>;
     save(path?: string, name?: string, _timeout?: number, _rename?: boolean): Promise<string>;
     /**
+     * 设置文件输入框的文件路径
+     */
+    set_file_input(files: string | string[]): Promise<Element>;
+    /**
      * 获取元素右边的指定元素
      */
     east(locOrPixel?: string | number, index?: number): Promise<Element | null>;
@@ -268,10 +272,10 @@ export declare class Element {
     /**
      * 获取覆盖在本元素上最上层的元素
      */
-    over(): Promise<Element | null>;
+    over(timeout?: number): Promise<Element | null>;
     /**
      * 获取相对本元素指定偏移量位置的元素
      */
-    offset(locator?: string, x?: number, y?: number): Promise<Element | null>;
+    offset(locator?: string, x?: number, y?: number, timeout?: number): Promise<Element | null>;
     private _getRelativeEle;
 }

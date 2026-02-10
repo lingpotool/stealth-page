@@ -78,6 +78,15 @@ export declare class ChromiumPageSetter {
      * 返回滚动设置对象
      */
     get scroll(): ScrollSettings;
+    /**
+     * 设置下载文件名
+     */
+    download_file_name(name?: string, suffix?: string): this;
+    /**
+     * 设置下载文件已存在时的处理方式
+     * @param mode 'rename' | 'overwrite' | 'skip' | 'cancel'
+     */
+    when_download_file_exists(mode: string): this;
 }
 /**
  * 滚动设置类

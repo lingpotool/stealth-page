@@ -19,6 +19,9 @@ class ChromiumOptions {
         this.retryTimes = 3;
         this.retryInterval = 2;
         this.loadMode = "normal";
+        this.downloadFileName = null;
+        this.downloadFileSuffix = null;
+        this.whenDownloadFileExists = "rename";
         if (init) {
             Object.assign(this, {
                 browserPath: init.browserPath ?? this.browserPath,

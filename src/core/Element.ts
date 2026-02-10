@@ -723,20 +723,34 @@ export class Element {
   /**
    * 选中/取消选中复选框
    */
-  async check(uncheck: boolean = false, _byJs: boolean = false): Promise<void> {
-    const objectId = await this.getObjectId();
-    await this._session.send("Runtime.callFunctionOn", {
-      objectId,
-      functionDeclaration: `function(uncheck) {
-        if (!this) return;
-        const shouldCheck = !uncheck;
-        if (this.checked !== shouldCheck) {
-          this.checked = shouldCheck;
-          this.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-      }`,
-      arguments: [{ value: uncheck }],
-    });
+  async check(uncheck: boolean = false, byJs: boolean = false): Promise<void> {
+    if (!byJs) {
+      // 模拟点击方式
+      const objectId = await this.getObjectId();
+      const { result } = await this._session.send<{ result: { value: boolean } }>("Runtime.callFunctionOn", {
+        objectId,
+        functionDeclaration: `function() { return !!this.checked; }`,
+        returnByValue: true,
+      });
+      const isChecked = result.value;
+      if ((!uncheck && !isChecked) || (uncheck && isChecked)) {
+        await this.do_click();
+      }
+    } else {
+      const objectId = await this.getObjectId();
+      await this._session.send("Runtime.callFunctionOn", {
+        objectId,
+        functionDeclaration: `function(uncheck) {
+          if (!this) return;
+          const shouldCheck = !uncheck;
+          if (this.checked !== shouldCheck) {
+            this.checked = shouldCheck;
+            this.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+        }`,
+        arguments: [{ value: uncheck }],
+      });
+    }
   }
 
   // ========== 拖拽方法 ==========
@@ -1297,24 +1311,61 @@ export class Element {
   // ========== JavaScript 执行 ==========
 
   async run_js(script: string, ...args: any[]): Promise<any> {
+    // 检查最后一个参数是否为选项对象 { asExpr, timeout }
+    let asExpr = false;
+    let timeout: number | undefined;
+    if (args.length > 0 && typeof args[args.length - 1] === 'object' && args[args.length - 1] !== null
+        && ('asExpr' in args[args.length - 1] || 'timeout' in args[args.length - 1])) {
+      const opts = args.pop();
+      asExpr = opts.asExpr ?? false;
+      timeout = opts.timeout;
+    }
+
+    if (asExpr) {
+      const params: Record<string, any> = {
+        expression: script,
+        returnByValue: true,
+      };
+      if (timeout !== undefined) params.timeout = timeout * 1000;
+      const { result } = await this._session.send<{ result: { value: any } }>("Runtime.evaluate", params);
+      return result.value;
+    }
+
     const objectId = await this.getObjectId();
     // 对齐 DrissionPage: 如果不是函数形式，包装成函数
     let funcDecl = script.trim();
     if (!funcDecl.startsWith("function") && !funcDecl.startsWith("(") && !funcDecl.startsWith("async")) {
       funcDecl = `function(){${funcDecl}}`;
     }
-    const { result } = await this._session.send<{ result: { value: any } }>("Runtime.callFunctionOn", {
+    const params: Record<string, any> = {
       objectId,
       functionDeclaration: funcDecl,
       arguments: args.map(a => ({ value: a })),
       returnByValue: true,
       awaitPromise: true,
       userGesture: true,
-    });
+    };
+    if (timeout !== undefined) params.timeout = timeout * 1000;
+    const { result } = await this._session.send<{ result: { value: any } }>("Runtime.callFunctionOn", params);
     return result.value;
   }
 
   async run_async_js(script: string, ...args: any[]): Promise<void> {
+    // 检查最后一个参数是否为选项对象 { asExpr }
+    let asExpr = false;
+    if (args.length > 0 && typeof args[args.length - 1] === 'object' && args[args.length - 1] !== null
+        && 'asExpr' in args[args.length - 1]) {
+      asExpr = args.pop().asExpr ?? false;
+    }
+
+    if (asExpr) {
+      await this._session.send("Runtime.evaluate", {
+        expression: script,
+        awaitPromise: false,
+      });
+      return;
+    }
+
     const objectId = await this.getObjectId();
     let funcDecl = script.trim();
     if (!funcDecl.startsWith("function") && !funcDecl.startsWith("(") && !funcDecl.startsWith("async")) {
@@ -1389,20 +1440,67 @@ export class Element {
   // ========== 资源获取 ==========
 
   async src(_timeout?: number, base64ToBytes: boolean = true): Promise<Buffer | string | null> {
-    const srcAttr = await this.attr("src");
+    const tag = await this.tag;
+    
+    // 对于 img 标签，等待图片加载完成
+    if (tag === 'img' && _timeout !== 0) {
+      const timeoutMs = (_timeout ?? 10) * 1000;
+      const deadline = Date.now() + timeoutMs;
+      while (Date.now() < deadline) {
+        const loaded = await this.run_js('return this.complete && typeof this.naturalWidth != "undefined" && this.naturalWidth > 0');
+        if (loaded) break;
+        await new Promise(r => setTimeout(r, 50));
+      }
+    }
+
+    // link 标签用 href，其他用 src
+    const srcAttr = tag === 'link' ? await this.attr("href") : await this.attr("src");
     if (!srcAttr) return null;
     
     // 如果是 base64 数据
-    if (srcAttr.startsWith("data:")) {
-      const match = srcAttr.match(/^data:[^;]+;base64,(.+)$/);
-      if (match && base64ToBytes) {
-        return Buffer.from(match[1], "base64");
+    if (srcAttr.toLowerCase().startsWith("data:image")) {
+      const parts = srcAttr.split(',', 2);
+      if (parts.length === 2) {
+        return base64ToBytes ? Buffer.from(parts[1], "base64") : parts[1];
       }
       return srcAttr;
     }
-    
-    // 返回 URL
-    return srcAttr;
+
+    // blob URL - 通过 JS 获取
+    if (srcAttr.startsWith("blob:")) {
+      try {
+        const result = await this.run_js(`
+          return new Promise((resolve) => {
+            fetch(this.src).then(r => r.blob()).then(b => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result.split(',')[1]);
+              reader.readAsDataURL(b);
+            }).catch(() => resolve(null));
+          });
+        `);
+        if (result && base64ToBytes) {
+          return Buffer.from(result, "base64");
+        }
+        return result;
+      } catch {
+        return null;
+      }
+    }
+
+    // 普通 URL - 使用 Page.getResourceContent
+    try {
+      const result = await this._session.send<{ content: string; base64Encoded: boolean }>("Page.getResourceContent", {
+        frameId: (this._page as any)?._frameId || (await this._session.send<{ frameTree: { frame: { id: string } } }>("Page.getFrameTree")).frameTree.frame.id,
+        url: srcAttr,
+      });
+      if (result.base64Encoded && base64ToBytes) {
+        return Buffer.from(result.content, "base64");
+      }
+      return result.content;
+    } catch {
+      // 回退：返回 URL
+      return srcAttr;
+    }
   }
 
   async save(path?: string, name?: string, _timeout?: number, _rename: boolean = true): Promise<string> {
@@ -1422,6 +1520,19 @@ export class Element {
     // 如果是 URL，需要下载
     // TODO: 实现 URL 下载
     return src;
+  }
+
+  /**
+   * 设置文件输入框的文件路径
+   */
+  async set_file_input(files: string | string[]): Promise<Element> {
+    const fileList = typeof files === 'string' ? files.split('\n') : files;
+    await this._ensureBackendNodeId();
+    await this._session.send("DOM.setFileInputFiles", {
+      files: fileList,
+      backendNodeId: this._backendNodeId,
+    });
+    return this;
   }
 
   // ========== 方向定位方法 ==========
@@ -1457,32 +1568,39 @@ export class Element {
   /**
    * 获取覆盖在本元素上最上层的元素
    */
-  async over(): Promise<Element | null> {
-    const loc = await this.rect.viewport_midpoint();
-    const objectId = await this.getObjectId();
+  async over(timeout?: number): Promise<Element | null> {
+    const deadline = timeout !== undefined ? Date.now() + timeout * 1000 : undefined;
     
-    const { result } = await this._session.send<{ result: { objectId?: string } }>("Runtime.callFunctionOn", {
-      objectId,
-      functionDeclaration: `function(x, y) {
-        const el = document.elementFromPoint(x, y);
-        return el !== this ? el : null;
-      }`,
-      arguments: [{ value: loc.x }, { value: loc.y }],
-    });
-    
-    if (!result.objectId) return null;
-    
-    await this._ensureDomTree();
-    const { nodeId } = await this._session.send<{ nodeId: number }>("DOM.requestNode", {
-      objectId: result.objectId,
-    });
-    return this._createElement(nodeId);
+    while (true) {
+      const loc = await this.rect.viewport_midpoint();
+      const objectId = await this.getObjectId();
+      
+      const { result } = await this._session.send<{ result: { objectId?: string } }>("Runtime.callFunctionOn", {
+        objectId,
+        functionDeclaration: `function(x, y) {
+          const el = document.elementFromPoint(x, y);
+          return el !== this ? el : null;
+        }`,
+        arguments: [{ value: loc.x }, { value: loc.y }],
+      });
+      
+      if (result.objectId) {
+        await this._ensureDomTree();
+        const { nodeId } = await this._session.send<{ nodeId: number }>("DOM.requestNode", {
+          objectId: result.objectId,
+        });
+        return this._createElement(nodeId);
+      }
+      
+      if (!deadline || Date.now() >= deadline) return null;
+      await new Promise(r => setTimeout(r, 100));
+    }
   }
 
   /**
    * 获取相对本元素指定偏移量位置的元素
    */
-  async offset(locator?: string, x?: number, y?: number): Promise<Element | null> {
+  async offset(locator?: string, x?: number, y?: number, timeout?: number): Promise<Element | null> {
     const rect = await this.rect.viewport_location();
     const size = await this.rect.size();
     

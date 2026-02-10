@@ -35,6 +35,9 @@ export class ChromiumOptions {
   retryTimes: number = 3;
   retryInterval: number = 2;
   loadMode: string = "normal";
+  downloadFileName: string | null = null;
+  downloadFileSuffix: string | null = null;
+  whenDownloadFileExists: string = "rename";
 
   constructor(init?: ChromiumOptionsInit) {
     if (init) {

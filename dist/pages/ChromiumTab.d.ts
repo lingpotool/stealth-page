@@ -75,11 +75,19 @@ export declare class ChromiumTab {
      */
     get load_mode(): string;
     /**
+     * 等待上传的文件列表
+     */
+    get upload_list(): string[];
+    /**
      * 当前页面 user agent
      */
     user_agent(): Promise<string>;
     init(): Promise<void>;
-    get(url: string): Promise<boolean>;
+    get(url: string, options?: {
+        retry?: number;
+        interval?: number;
+        timeout?: number;
+    }): Promise<boolean>;
     refresh(ignoreCache?: boolean): Promise<void>;
     back(steps?: number): Promise<void>;
     forward(steps?: number): Promise<void>;
@@ -103,6 +111,7 @@ export declare class ChromiumTab {
     run_js_loaded(script: string, ...args: any[]): Promise<any>;
     run_async_js(script: string, ...args: any[]): Promise<void>;
     run_cdp(cmd: string, params?: Record<string, any>): Promise<any>;
+    run_cdp_loaded(cmd: string, params?: Record<string, any>): Promise<any>;
     close(others?: boolean): Promise<void>;
     /**
      * 断开与页面的连接，但不关闭标签页
@@ -122,6 +131,8 @@ export declare class ChromiumTab {
         asBytes?: boolean;
         asBase64?: boolean;
         fullPage?: boolean;
+        leftTop?: [number, number];
+        rightBottom?: [number, number];
     }): Promise<string | Buffer>;
     save(options?: {
         path?: string;

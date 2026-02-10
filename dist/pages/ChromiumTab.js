@@ -190,6 +190,12 @@ class ChromiumTab {
         return this._browser.options.loadMode ?? "normal";
     }
     /**
+     * 等待上传的文件列表
+     */
+    get upload_list() {
+        return this._browser.options.uploadFiles ?? [];
+    }
+    /**
      * 当前页面 user agent
      */
     async user_agent() {
@@ -208,11 +214,23 @@ class ChromiumTab {
         }
     }
     // ========== 页面导航 ==========
-    async get(url) {
+    async get(url, options) {
         await this.init();
-        const timeoutMs = this._browser.options.timeouts.pageLoad * 1000;
-        await this._page.get(url, { timeoutMs });
-        return true;
+        const retry = options?.retry ?? this._browser.options.retryTimes ?? 0;
+        const interval = options?.interval ?? this._browser.options.retryInterval ?? 1;
+        const timeoutMs = (options?.timeout ?? this._browser.options.timeouts.pageLoad) * 1000;
+        for (let i = 0; i <= retry; i++) {
+            try {
+                await this._page.get(url, { timeoutMs });
+                return true;
+            }
+            catch (e) {
+                if (i < retry) {
+                    await new Promise(r => setTimeout(r, interval * 1000));
+                }
+            }
+        }
+        return false;
     }
     async refresh(ignoreCache = false) {
         await this.init();
@@ -333,6 +351,19 @@ class ChromiumTab {
     }
     async run_async_js(script, ...args) {
         await this.init();
+        // 检查最后一个参数是否为选项对象 { asExpr }
+        let asExpr = false;
+        if (args.length > 0 && typeof args[args.length - 1] === 'object' && args[args.length - 1] !== null
+            && 'asExpr' in args[args.length - 1]) {
+            asExpr = args.pop().asExpr ?? false;
+        }
+        if (asExpr) {
+            await this._page.cdpSession.send("Runtime.evaluate", {
+                expression: script,
+                awaitPromise: false,
+            });
+            return;
+        }
         if (args.length > 0) {
             // 使用 callFunctionOn 传参
             const { result: docResult } = await this._page.cdpSession.send("Runtime.evaluate", {
@@ -358,6 +389,14 @@ class ChromiumTab {
     }
     async run_cdp(cmd, params = {}) {
         await this.init();
+        return this._page.cdpSession.send(cmd, params);
+    }
+    async run_cdp_loaded(cmd, params = {}) {
+        await this.init();
+        await this._page.cdpSession.send("Runtime.evaluate", {
+            expression: "new Promise(r => document.readyState === 'complete' ? r() : window.addEventListener('load', r))",
+            awaitPromise: true,
+        });
         return this._page.cdpSession.send(cmd, params);
     }
     // ========== 标签页操作 ==========
@@ -447,9 +486,18 @@ class ChromiumTab {
     }
     async get_screenshot(options = {}) {
         await this.init();
-        const { path, name, asBytes, asBase64, fullPage } = options;
+        const { path, name, asBytes, asBase64, fullPage, leftTop, rightBottom } = options;
         let clip = undefined;
-        if (fullPage) {
+        if (leftTop && rightBottom) {
+            clip = {
+                x: leftTop[0],
+                y: leftTop[1],
+                width: rightBottom[0] - leftTop[0],
+                height: rightBottom[1] - leftTop[1],
+                scale: 1,
+            };
+        }
+        else if (fullPage) {
             const { result } = await this._page.cdpSession.send("Runtime.evaluate", {
                 expression: `({ width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight })`,
                 returnByValue: true,

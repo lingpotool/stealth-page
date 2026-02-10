@@ -275,6 +275,24 @@ export class ChromiumPageSetter {
     }
     return this._scrollSettings;
   }
+
+  /**
+   * 设置下载文件名
+   */
+  download_file_name(name?: string, suffix?: string): this {
+    this._page.browser.options.downloadFileName = name ?? null;
+    this._page.browser.options.downloadFileSuffix = suffix ?? null;
+    return this;
+  }
+
+  /**
+   * 设置下载文件已存在时的处理方式
+   * @param mode 'rename' | 'overwrite' | 'skip' | 'cancel'
+   */
+  when_download_file_exists(mode: string): this {
+    this._page.browser.options.whenDownloadFileExists = mode;
+    return this;
+  }
 }
 
 /**

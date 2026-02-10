@@ -68,7 +68,11 @@ export declare class ChromiumPage {
     get load_mode_value(): string;
     user_agent(): Promise<string>;
     init(): Promise<void>;
-    get(url: string): Promise<boolean>;
+    get(url: string, options?: {
+        retry?: number;
+        interval?: number;
+        timeout?: number;
+    }): Promise<boolean>;
     ele(locator: string, index?: number): Promise<Element | null>;
     eles(locator: string): Promise<Element[]>;
     /**
@@ -183,7 +187,7 @@ export declare class ChromiumPage {
     /**
      * 异步执行 JS
      */
-    run_async_js(script: string): Promise<void>;
+    run_async_js(script: string, ...args: any[]): Promise<void>;
     /**
      * 保存页面为 PDF 或 MHTML
      */

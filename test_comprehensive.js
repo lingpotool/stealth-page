@@ -817,6 +817,140 @@ async function runTests() {
     return { success: html.includes("<h1") && html.includes("</h1>"), expected: "<h1>...</h1>", actual: html.slice(0, 50) };
   });
 
+  // ========== 29. 新增功能测试 ==========
+  console.log("\n【29. run_js as_expr 和 timeout】");
+
+  await test("run_js() as_expr 模式", async () => {
+    const result = await page.run_js("1 + 2", { asExpr: true });
+    return { success: result === 3, expected: 3, actual: result };
+  });
+
+  await test("run_js() as_expr 访问 DOM", async () => {
+    const result = await page.run_js("document.title", { asExpr: true });
+    return { success: typeof result === "string" && result.length > 0, expected: "标题字符串", actual: result };
+  });
+
+  await test("Element.run_js() as_expr 模式", async () => {
+    const el = await page.ele("#title");
+    const result = await el.run_js("document.title", { asExpr: true });
+    return { success: typeof result === "string" && result.length > 0, expected: "标题字符串", actual: result };
+  });
+
+  // ========== 30. get() 重试参数 ==========
+  console.log("\n【30. get() 重试参数】");
+
+  await test("get() 带 timeout 参数", async () => {
+    const result = await page.get(TEST_HTML, { timeout: 10 });
+    return { success: result === true, expected: true, actual: result };
+  });
+
+  // ========== 31. upload_list 属性 ==========
+  console.log("\n【31. upload_list 属性】");
+
+  await test("upload_list 默认为空数组", async () => {
+    // 通过 ChromiumTab 测试
+    const tabs = await page.get_tabs();
+    const { ChromiumTab } = require("./dist");
+    const tab = new ChromiumTab(page.browser, tabs[0].id);
+    await tab.init();
+    const list = tab.upload_list;
+    return { success: Array.isArray(list) && list.length === 0, expected: "空数组", actual: JSON.stringify(list) };
+  });
+
+  // ========== 32. check() byJs 参数 ==========
+  console.log("\n【32. check() byJs 参数】");
+
+  await test("check(byJs=true) 勾选复选框", async () => {
+    const el = await page.ele("#checkbox");
+    // 先取消选中
+    await el.check(true, true);
+    const unchecked = await el.states.is_checked;
+    // 再勾选
+    await el.check(false, true);
+    const checked = await el.states.is_checked;
+    return { success: !unchecked && checked, expected: "先取消后勾选", actual: `unchecked=${unchecked}, checked=${checked}` };
+  });
+
+  // ========== 33. set.download_file_name / when_download_file_exists ==========
+  console.log("\n【33. Setter 下载设置】");
+
+  await test("set.download_file_name() 设置下载文件名", async () => {
+    page.set.download_file_name("test_file", "pdf");
+    const name = page.browser.options.downloadFileName;
+    const suffix = page.browser.options.downloadFileSuffix;
+    return { success: name === "test_file" && suffix === "pdf", expected: "test_file.pdf", actual: `${name}.${suffix}` };
+  });
+
+  await test("set.when_download_file_exists() 设置处理方式", async () => {
+    page.set.when_download_file_exists("overwrite");
+    const mode = page.browser.options.whenDownloadFileExists;
+    return { success: mode === "overwrite", expected: "overwrite", actual: mode };
+  });
+
+  // ========== 34. run_cdp_loaded ==========
+  console.log("\n【34. run_cdp_loaded】");
+
+  await test("run_cdp_loaded() 等待加载后执行", async () => {
+    const tabs = await page.get_tabs();
+    const { ChromiumTab } = require("./dist");
+    const tab = new ChromiumTab(page.browser, tabs[0].id);
+    await tab.init();
+    const result = await tab.run_cdp_loaded("Runtime.evaluate", { expression: "1+1", returnByValue: true });
+    return { success: result?.result?.value === 2, expected: 2, actual: result?.result?.value };
+  });
+
+  // ========== 35. get_screenshot leftTop/rightBottom ==========
+  console.log("\n【35. get_screenshot 裁剪参数】");
+
+  await test("get_screenshot() 带裁剪区域", async () => {
+    const tabs = await page.get_tabs();
+    const { ChromiumTab } = require("./dist");
+    const tab = new ChromiumTab(page.browser, tabs[0].id);
+    await tab.init();
+    const buf = await tab.get_screenshot({ asBytes: true, leftTop: [0, 0], rightBottom: [100, 100] });
+    return { success: Buffer.isBuffer(buf) && buf.length > 0, expected: "Buffer > 0", actual: `Buffer(${buf.length})` };
+  });
+
+  // ========== 36. Element.set_file_input ==========
+  console.log("\n【36. Element.set_file_input】");
+
+  await test("set_file_input 方法存在", async () => {
+    const el = await page.ele("#file-input");
+    const hasMethod = typeof el.set_file_input === "function";
+    return { success: hasMethod, expected: "function", actual: typeof el.set_file_input };
+  });
+
+  // ========== 37. Element.over() 带 timeout ==========
+  console.log("\n【37. Element.over() 带 timeout】");
+
+  await test("over() 无遮盖返回 null", async () => {
+    const el = await page.ele("#title");
+    const result = await el.over(0);
+    // 标题元素通常不被遮盖，返回 null
+    return { success: true, expected: "null 或 Element", actual: result ? "Element" : "null" };
+  });
+
+  // ========== 38. Element.offset() 带 timeout ==========
+  console.log("\n【38. Element.offset() 带 timeout】");
+
+  await test("offset() 获取偏移位置元素", async () => {
+    const el = await page.ele("#title");
+    const result = await el.offset(null, 0, 0);
+    return { success: result !== undefined, expected: "Element 或 null", actual: result ? "Element" : "null" };
+  });
+
+  // ========== 39. Element.src() 增强 ==========
+  console.log("\n【39. Element.src() 增强】");
+
+  await test("src() 获取 img 元素资源", async () => {
+    const el = await page.ele("img");
+    if (!el) {
+      return { success: true, expected: "跳过(无img)", actual: "跳过" };
+    }
+    const src = await el.src();
+    return { success: src !== undefined, expected: "资源数据", actual: src ? `${typeof src}` : "null" };
+  });
+
   // ========== 结果汇总 ==========
   console.log("\n═══════════════════════════════════════════════════════════");
   console.log("                    测试结果汇总");

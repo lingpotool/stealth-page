@@ -207,11 +207,23 @@ export class ChromiumPage {
     }
   }
 
-  async get(url: string): Promise<boolean> {
+  async get(url: string, options?: { retry?: number; interval?: number; timeout?: number }): Promise<boolean> {
     await this.init();
-    const timeoutMs = this._chromium.options.timeouts.pageLoad * 1000;
-    await this._page!.get(url, { timeoutMs });
-    return true;
+    const retry = options?.retry ?? this._chromium.options.retryTimes ?? 0;
+    const interval = options?.interval ?? this._chromium.options.retryInterval ?? 1;
+    const timeoutMs = (options?.timeout ?? this._chromium.options.timeouts.pageLoad) * 1000;
+    
+    for (let i = 0; i <= retry; i++) {
+      try {
+        await this._page!.get(url, { timeoutMs });
+        return true;
+      } catch (e) {
+        if (i < retry) {
+          await new Promise(r => setTimeout(r, interval * 1000));
+        }
+      }
+    }
+    return false;
   }
 
   async ele(locator: string, index = 1): Promise<Element | null> {
@@ -711,12 +723,35 @@ export class ChromiumPage {
   /**
    * 异步执行 JS
    */
-  async run_async_js(script: string): Promise<void> {
+  async run_async_js(script: string, ...args: any[]): Promise<void> {
     await this.init();
-    await this._page!.cdpSession.send("Runtime.evaluate", {
-      expression: script,
-      awaitPromise: false,
-    });
+    // 检查最后一个参数是否为选项对象 { asExpr }
+    let asExpr = false;
+    if (args.length > 0 && typeof args[args.length - 1] === 'object' && args[args.length - 1] !== null
+        && 'asExpr' in args[args.length - 1]) {
+      asExpr = args.pop().asExpr ?? false;
+    }
+
+    if (asExpr || args.length === 0) {
+      await this._page!.cdpSession.send("Runtime.evaluate", {
+        expression: script,
+        awaitPromise: false,
+      });
+    } else {
+      const { result: docResult } = await this._page!.cdpSession.send<{ result: { objectId: string } }>("Runtime.evaluate", {
+        expression: "document",
+        returnByValue: false,
+      });
+      const isFunction = script.trim().startsWith('function') || script.trim().startsWith('(') || script.trim().startsWith('async');
+      const funcBody = isFunction ? script : `function(){${script}}`;
+      await this._page!.cdpSession.send("Runtime.callFunctionOn", {
+        functionDeclaration: funcBody,
+        objectId: docResult.objectId,
+        arguments: args.map(a => ({ value: a })),
+        returnByValue: false,
+        awaitPromise: false,
+      });
+    }
   }
 
   // ========== 页面保存 ==========

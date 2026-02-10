@@ -403,6 +403,26 @@ class Page {
         return elements;
     }
     async runJs(expression, ...args) {
+        // 检查最后一个参数是否为选项对象 { asExpr, timeout }
+        let asExpr = false;
+        let timeout;
+        if (args.length > 0 && typeof args[args.length - 1] === 'object' && args[args.length - 1] !== null
+            && ('asExpr' in args[args.length - 1] || 'timeout' in args[args.length - 1])) {
+            const opts = args.pop();
+            asExpr = opts.asExpr ?? false;
+            timeout = opts.timeout;
+        }
+        // as_expr 模式：直接作为表达式执行，不包装
+        if (asExpr) {
+            const params = {
+                expression,
+                returnByValue: true,
+            };
+            if (timeout !== undefined)
+                params.timeout = timeout * 1000;
+            const { result } = await this.session.send("Runtime.evaluate", params);
+            return result.value;
+        }
         // 如果有参数，使用 Runtime.callFunctionOn 方式
         if (args.length > 0) {
             // 包装成函数
@@ -415,12 +435,15 @@ class Page {
                 expression: "document",
                 returnByValue: false,
             });
-            const { result } = await this.session.send("Runtime.callFunctionOn", {
+            const params = {
                 functionDeclaration: funcBody,
                 objectId: docResult.objectId,
                 arguments: args.map(a => ({ value: a })),
                 returnByValue: true,
-            });
+            };
+            if (timeout !== undefined)
+                params.timeout = timeout * 1000;
+            const { result } = await this.session.send("Runtime.callFunctionOn", params);
             return result.value;
         }
         // 如果表达式不包含 return 语句，自动包装
@@ -434,10 +457,13 @@ class Page {
         }
         // 包装成立即执行函数
         const finalExpression = `(function() { ${wrappedExpression} })()`;
-        const { result } = await this.session.send("Runtime.evaluate", {
+        const params = {
             expression: finalExpression,
             returnByValue: true,
-        });
+        };
+        if (timeout !== undefined)
+            params.timeout = timeout * 1000;
+        const { result } = await this.session.send("Runtime.evaluate", params);
         return result.value;
     }
     async html() {

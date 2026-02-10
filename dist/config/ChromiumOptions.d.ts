@@ -33,6 +33,9 @@ export declare class ChromiumOptions {
     retryTimes: number;
     retryInterval: number;
     loadMode: string;
+    downloadFileName: string | null;
+    downloadFileSuffix: string | null;
+    whenDownloadFileExists: string;
     constructor(init?: ChromiumOptionsInit);
     set_timeouts(base: number, pageLoad?: number, script?: number): this;
     set_paths(options: {
