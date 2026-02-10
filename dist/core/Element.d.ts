@@ -120,6 +120,26 @@ export declare class Element {
     attrs(): Promise<Record<string, string>>;
     property(name: string): Promise<any>;
     style(name: string, pseudoEle?: string): Promise<string>;
+    /**
+     * 返回元素内所有直接子节点的文本
+     */
+    texts(textNodeOnly?: boolean): Promise<string[]>;
+    /**
+     * 返回元素的 href 或 src 属性
+     */
+    link(): Promise<string | null>;
+    /**
+     * 返回元素内第一级子元素个数
+     */
+    child_count(): Promise<number>;
+    /**
+     * 返回元素的绝对 XPath 路径
+     */
+    xpath(): Promise<string>;
+    /**
+     * 返回元素的绝对 CSS 选择器路径
+     */
+    css_path(): Promise<string>;
     set_attr(name: string, value: string): Promise<void>;
     remove_attr(name: string): Promise<void>;
     is_displayed(): Promise<boolean>;
@@ -132,11 +152,11 @@ export declare class Element {
     /**
      * 输入文本
      */
-    input(value: string, clear?: boolean): Promise<Element>;
+    input(value: string, clear?: boolean, byJs?: boolean): Promise<Element>;
     /**
      * 清空内容
      */
-    clear(): Promise<void>;
+    clear(byJs?: boolean): Promise<void>;
     /**
      * 获取焦点
      */
@@ -144,7 +164,7 @@ export declare class Element {
     /**
      * 鼠标悬停
      */
-    hover(): Promise<void>;
+    hover(offsetX?: number, offsetY?: number): Promise<void>;
     /**
      * 双击
      */

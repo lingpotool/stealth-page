@@ -422,6 +422,116 @@ export class Element {
     return result.value;
   }
 
+  /**
+   * 返回元素内所有直接子节点的文本
+   */
+  async texts(textNodeOnly: boolean = false): Promise<string[]> {
+    const objectId = await this.getObjectId();
+    const { result } = await this._session.send<{ result: { value: string[] } }>("Runtime.callFunctionOn", {
+      objectId,
+      functionDeclaration: `function(textOnly) {
+        const texts = [];
+        for (const node of this.childNodes) {
+          if (node.nodeType === 3) {
+            const t = node.textContent.trim();
+            if (t) texts.push(t);
+          } else if (!textOnly && node.nodeType === 1) {
+            const t = node.textContent.trim();
+            if (t) texts.push(t);
+          }
+        }
+        return texts;
+      }`,
+      arguments: [{ value: textNodeOnly }],
+      returnByValue: true,
+    });
+    return result.value;
+  }
+
+  /**
+   * 返回元素的 href 或 src 属性
+   */
+  async link(): Promise<string | null> {
+    const href = await this.attr("href");
+    if (href) return href;
+    const src = await this.attr("src");
+    return src || null;
+  }
+
+  /**
+   * 返回元素内第一级子元素个数
+   */
+  async child_count(): Promise<number> {
+    const objectId = await this.getObjectId();
+    const { result } = await this._session.send<{ result: { value: number } }>("Runtime.callFunctionOn", {
+      objectId,
+      functionDeclaration: "function() { return this.children.length; }",
+      returnByValue: true,
+    });
+    return result.value;
+  }
+
+  /**
+   * 返回元素的绝对 XPath 路径
+   */
+  async xpath(): Promise<string> {
+    const objectId = await this.getObjectId();
+    const { result } = await this._session.send<{ result: { value: string } }>("Runtime.callFunctionOn", {
+      objectId,
+      functionDeclaration: `function() {
+        let el = this;
+        const parts = [];
+        while (el && el.nodeType === 1) {
+          let idx = 0;
+          let sibling = el.previousSibling;
+          while (sibling) {
+            if (sibling.nodeType === 1 && sibling.nodeName === el.nodeName) idx++;
+            sibling = sibling.previousSibling;
+          }
+          parts.unshift(el.nodeName.toLowerCase() + '[' + (idx + 1) + ']');
+          el = el.parentNode;
+        }
+        return '/' + parts.join('/');
+      }`,
+      returnByValue: true,
+    });
+    return result.value;
+  }
+
+  /**
+   * 返回元素的绝对 CSS 选择器路径
+   */
+  async css_path(): Promise<string> {
+    const objectId = await this.getObjectId();
+    const { result } = await this._session.send<{ result: { value: string } }>("Runtime.callFunctionOn", {
+      objectId,
+      functionDeclaration: `function() {
+        let el = this;
+        const parts = [];
+        while (el && el.nodeType === 1) {
+          let selector = el.nodeName.toLowerCase();
+          if (el.id) {
+            selector += '#' + el.id;
+            parts.unshift(selector);
+            break;
+          }
+          let idx = 1;
+          let sibling = el.previousElementSibling;
+          while (sibling) {
+            if (sibling.nodeName === el.nodeName) idx++;
+            sibling = sibling.previousElementSibling;
+          }
+          if (idx > 1) selector += ':nth-of-type(' + idx + ')';
+          parts.unshift(selector);
+          el = el.parentElement;
+        }
+        return parts.join('>');
+      }`,
+      returnByValue: true,
+    });
+    return result.value;
+  }
+
 
   // ========== 属性设置方法（保持向后兼容） ==========
 
@@ -465,7 +575,44 @@ export class Element {
   /**
    * 输入文本
    */
-  async input(value: string, clear: boolean = false): Promise<Element> {
+  async input(value: string, clear: boolean = false, byJs: boolean = false): Promise<Element> {
+    if (!byJs) {
+      // 模拟按键方式
+      await this.focus();
+      if (clear) {
+        await this.clear();
+      }
+      const page = this.getPage();
+      if (page) {
+        // 检查是否是组合键（tuple 在 JS 中用数组表示）
+        if (Array.isArray(value)) {
+          for (const key of value) {
+            await page.cdpSession.send("Input.dispatchKeyEvent", {
+              type: "keyDown",
+              key,
+            });
+            await page.cdpSession.send("Input.dispatchKeyEvent", {
+              type: "keyUp",
+              key,
+            });
+          }
+          return this;
+        }
+        // 普通文本输入
+        for (const char of String(value)) {
+          await page.cdpSession.send("Input.dispatchKeyEvent", {
+            type: "keyDown",
+            text: char,
+          });
+          await page.cdpSession.send("Input.dispatchKeyEvent", {
+            type: "keyUp",
+            text: char,
+          });
+        }
+        return this;
+      }
+    }
+    // js 方式
     const objectId = await this.getObjectId();
     await this._session.send("Runtime.callFunctionOn", {
       objectId,
@@ -480,7 +627,7 @@ export class Element {
           el.dispatchEvent(new Event('change', { bubbles: true })); 
         } 
       }`,
-      arguments: [{ value }, { value: clear }],
+      arguments: [{ value: String(value) }, { value: clear }],
     });
     return this;
   }
@@ -488,14 +635,29 @@ export class Element {
   /**
    * 清空内容
    */
-  async clear(): Promise<void> {
+  async clear(byJs: boolean = false): Promise<void> {
+    if (!byJs) {
+      // 模拟按键方式：ctrl+a + delete
+      await this.focus();
+      const page = this.getPage();
+      if (page) {
+        await page.cdpSession.send("Input.dispatchKeyEvent", { type: "keyDown", key: "a", code: "KeyA", modifiers: 2 }); // ctrl+a
+        await page.cdpSession.send("Input.dispatchKeyEvent", { type: "keyUp", key: "a", code: "KeyA", modifiers: 2 });
+        await page.cdpSession.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Delete", code: "Delete" });
+        await page.cdpSession.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Delete", code: "Delete" });
+        return;
+      }
+    }
+    // js 方式
     const objectId = await this.getObjectId();
     await this._session.send("Runtime.callFunctionOn", {
       objectId,
       functionDeclaration: `function() {
         if (this) {
           if (this.value !== undefined) this.value = '';
-          if (this.innerText !== undefined) this.innerText = '';
+          if (this.innerText !== undefined && this.contentEditable === 'true') this.innerText = '';
+          this.dispatchEvent(new Event('input', { bubbles: true }));
+          this.dispatchEvent(new Event('change', { bubbles: true }));
         }
       }`,
     });
@@ -515,13 +677,26 @@ export class Element {
   /**
    * 鼠标悬停
    */
-  async hover(): Promise<void> {
-    const loc = await this.rect.viewport_midpoint();
-    await this._session.send("Input.dispatchMouseEvent", {
-      type: "mouseMoved",
-      x: loc.x,
-      y: loc.y,
-    });
+  async hover(offsetX?: number, offsetY?: number): Promise<void> {
+    if (offsetX !== undefined || offsetY !== undefined) {
+      // 使用偏移量，相对于元素左上角
+      const loc = await this.rect.viewport_location();
+      const size = await this.size();
+      const x = loc.x + (offsetX ?? size.width / 2);
+      const y = loc.y + (offsetY ?? size.height / 2);
+      await this._session.send("Input.dispatchMouseEvent", {
+        type: "mouseMoved",
+        x,
+        y,
+      });
+    } else {
+      const loc = await this.rect.viewport_midpoint();
+      await this._session.send("Input.dispatchMouseEvent", {
+        type: "mouseMoved",
+        x: loc.x,
+        y: loc.y,
+      });
+    }
   }
 
   /**
