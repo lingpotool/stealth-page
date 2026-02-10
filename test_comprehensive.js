@@ -471,7 +471,7 @@ async function runTests() {
   await test("link() 获取链接", async () => {
     const el = await page.ele("#link");
     const link = await el.link();
-    return { success: link === "https://example.com", expected: "https://example.com", actual: link };
+    return { success: link && link.startsWith("https://example.com"), expected: "https://example.com", actual: link };
   });
 
   await test("link() 获取img src", async () => {

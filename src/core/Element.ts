@@ -370,7 +370,30 @@ export class Element {
   }
 
   async attr(name: string): Promise<string | null> {
+    // 对齐 DrissionPage: 特殊属性名处理
+    if (name === 'text') return this.text();
+    if (name === 'innerText') return this.raw_text();
+    if (name === 'html' || name === 'outerHTML') return this.outer_html();
+    if (name === 'innerHTML') return this.inner_html();
+
     const objectId = await this.getObjectId();
+
+    // href 和 src 返回绝对 URL
+    if (name === 'href' || name === 'src') {
+      const { result } = await this._session.send<{ result: { value: string | null } }>("Runtime.callFunctionOn", {
+        objectId,
+        functionDeclaration: `function(n) {
+          const val = this.getAttribute(n);
+          if (!val) return null;
+          if (n === 'href' && (val.toLowerCase().startsWith('javascript:') || val.toLowerCase().startsWith('mailto:'))) return val;
+          try { return new URL(val, this.baseURI).href; } catch { return val; }
+        }`,
+        arguments: [{ value: name }],
+        returnByValue: true,
+      });
+      return result.value;
+    }
+
     const { result } = await this._session.send<{ result: { value: string | null } }>("Runtime.callFunctionOn", {
       objectId,
       functionDeclaration: "function(n) { return this && this.getAttribute ? this.getAttribute(n) : null; }",
