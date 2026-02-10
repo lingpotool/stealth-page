@@ -4,6 +4,12 @@ Node.js 浏览器自动化库，API 风格对齐 Python [DrissionPage](https://g
 
 内置反检测、TypeScript 支持、通过 CDP 连接已有 Chrome 实例。
 
+> **声明**
+>
+> 本项目由 AI（Kiro / Claude）辅助完成从 Python DrissionPage v4.1.1.2 到 Node.js/TypeScript 的完整迁移，包括代码转写、API 对齐、测试编写及文档生成。所有代码均为基于 DrissionPage API 设计的独立 TypeScript 实现，非逐行翻译。`reference/` 目录保留了 DrissionPage 原始 Python 源码作为参考存档。
+>
+> 由于代码由 AI 生成，可能存在未覆盖的边界情况或与原版行为不一致之处，欢迎反馈和贡献。
+
 ## 安装
 
 只能通过 GitHub 安装：
