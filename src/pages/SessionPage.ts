@@ -215,25 +215,32 @@ export class SessionPage {
     allow_redirects?: boolean;
     verify?: boolean;
     timeout?: number;
+    showErrmsg?: boolean;
+    retry?: number;
+    interval?: number;
   }): Promise<boolean> {
     const finalUrl = this._buildUrl(url, extra?.params);
     const reqExtra = this._buildRequestExtra(extra);
-    const { retryTimes, retryInterval } = this._options;
+    const retryTimes = extra?.retry ?? this._options.retryTimes;
+    const retryInterval = extra?.interval ?? this._options.retryInterval;
     let attempt = 0;
     while (true) {
       try {
         const res = await this._request("GET", finalUrl, reqExtra);
         this._cacheResponse(res);
         return res.statusCode >= 200 && res.statusCode < 400;
-      } catch {
+      } catch (e) {
         if (attempt >= retryTimes) {
           this._url = url;
           this._statusCode = 0;
           this._html = null;
+          if (extra?.showErrmsg) {
+            console.error(`SessionPage.get failed: ${url}`, e);
+          }
           return false;
         }
         attempt += 1;
-        await new Promise((resolve) => setTimeout(resolve, this._options.retryInterval * 1000));
+        await new Promise((resolve) => setTimeout(resolve, retryInterval * 1000));
       }
     }
   }
@@ -252,22 +259,29 @@ export class SessionPage {
       allow_redirects?: boolean;
       verify?: boolean;
       timeout?: number;
+      showErrmsg?: boolean;
+      retry?: number;
+      interval?: number;
     },
   ): Promise<boolean> {
     const finalUrl = this._buildUrl(url, extra?.params);
     const reqExtra = this._buildRequestExtra(extra);
-    const { retryTimes, retryInterval } = this._options;
+    const retryTimes = extra?.retry ?? this._options.retryTimes;
+    const retryInterval = extra?.interval ?? this._options.retryInterval;
     let attempt = 0;
     while (true) {
       try {
         const res = await this._request("POST", finalUrl, reqExtra);
         this._cacheResponse(res);
         return res.statusCode >= 200 && res.statusCode < 400;
-      } catch {
+      } catch (e) {
         if (attempt >= retryTimes) {
           this._url = url;
           this._statusCode = 0;
           this._html = null;
+          if (extra?.showErrmsg) {
+            console.error(`SessionPage.post failed: ${url}`, e);
+          }
           return false;
         }
         attempt += 1;
