@@ -255,9 +255,9 @@ export class Chromium {
     this._browser = null;
   }
 
-  async get_tab(idOrNum?: string | number, title?: string, url?: string): Promise<{ id: string; url: string; title: string; type: string } | null> {
+  async get_tab(idOrNum?: string | number, title?: string, url?: string, tabType?: string | string[]): Promise<{ id: string; url: string; title: string; type: string } | null> {
     if (!this._cdpSession) return null;
-    const tabs = await this.get_tabs();
+    const tabs = await this.get_tabs(title, url, tabType);
 
     if (idOrNum !== undefined) {
       if (typeof idOrNum === 'number') {
@@ -267,26 +267,23 @@ export class Chromium {
       return tabs.find(t => t.id === idOrNum) ?? null;
     }
 
-    if (title || url) {
-      return tabs.find(t => {
-        if (title && !t.title.includes(title)) return false;
-        if (url && !t.url.includes(url)) return false;
-        return true;
-      }) ?? null;
-    }
-
     return tabs[0] ?? null;
   }
 
-  async get_tabs(title?: string, url?: string): Promise<Array<{ id: string; url: string; title: string; type: string }>> {
+  async get_tabs(title?: string, url?: string, tabType?: string | string[]): Promise<Array<{ id: string; url: string; title: string; type: string }>> {
     if (!this._cdpSession) {
       return [];
     }
     const { targetInfos } = await this._cdpSession.send<{
       targetInfos: Array<{ targetId: string; url: string; title: string; type: string }>;
     }>("Target.getTargets");
+
+    const typeFilter = tabType
+      ? (Array.isArray(tabType) ? tabType : [tabType])
+      : ['page'];
+
     let result = targetInfos
-      .filter((t) => t.type === "page")
+      .filter((t) => typeFilter.includes(t.type))
       .map((t) => ({
         id: t.targetId,
         url: t.url,
