@@ -120,4 +120,20 @@ export class BrowserSetter {
     (this._browser.options as any).noneElementValue = onOff ? value : undefined;
     (this._browser.options as any).noneElementEnabled = onOff;
   }
+
+  download_file_type(fileType: string): void {
+    (this._browser.options as any).downloadFileType = fileType;
+  }
+
+  async block_urls(urls: string[] | null): Promise<void> {
+    await this._browser.cdpSession.send("Network.setBlockedURLs", {
+      urls: urls || [],
+    });
+  }
+
+  async ignore_https_errors(onOff: boolean = true): Promise<void> {
+    await this._browser.cdpSession.send("Security.setIgnoreCertificateErrors", {
+      ignore: onOff,
+    });
+  }
 }

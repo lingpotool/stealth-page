@@ -1,6 +1,7 @@
 import { ChromiumPage } from "./ChromiumPage";
 import { CookiesSetter } from "../units/CookiesSetter";
 import { WindowSetter } from "../units/WindowSetter";
+import { NoneElement } from "../core/NoneElement";
 
 /**
  * 加载模式设置类（页面级别）
@@ -291,6 +292,16 @@ export class ChromiumPageSetter {
    */
   when_download_file_exists(mode: string): this {
     this._page.browser.options.whenDownloadFileExists = mode;
+    return this;
+  }
+
+  none_element_value(value: any = null, returnSelf: boolean = true): this {
+    NoneElement.setValue(value, returnSelf);
+    return this;
+  }
+
+  none_element_raise(raise: boolean = true): this {
+    NoneElement.raiseWhenNotFound = raise;
     return this;
   }
 }

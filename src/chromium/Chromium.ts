@@ -12,30 +12,41 @@ import { WebSocketCDPSession } from "../core/WebSocketCDPSession";
 import { BrowserSetter } from "../units/BrowserSetter";
 import { BrowserWaiter } from "../units/BrowserWaiter";
 import { BrowserStates } from "../units/BrowserStates";
+import { raise_error } from "../core/tools";
+import { Settings } from "../core/Settings";
 
 export interface ChromiumInitOptions {
   addrOrOpts?: string | ChromiumOptions;
 }
 
-/**
- * Node 版 Chromium，对应 DrissionPage.Chromium。
- * 当前只定义接口和基本结构，具体连接和 CDP 逻辑后续实现。
- */
 export class Chromium {
+  private static readonly _BROWSERS = new Map<string, Chromium>();
+
   private _options: ChromiumOptions;
   private _browser: Browser | null = null;
   private _cdpSession: CDPSession | null = null;
   private _setter: BrowserSetter | null = null;
   private _waiter: BrowserWaiter | null = null;
   private _states: BrowserStates | null = null;
+  private _disconnect_flag: boolean = false;
+  private _is_headless: boolean = false;
+  private _process_id: number | null = null;
 
   constructor(addrOrOpts?: string | ChromiumOptions) {
     this._options = typeof addrOrOpts === "string" ? new ChromiumOptions({ address: addrOrOpts }) : addrOrOpts ?? new ChromiumOptions();
+
+    const address = this._options.address || '127.0.0.1:9222';
+    const existing = Chromium._BROWSERS.get(address);
+    if (existing) {
+      return existing;
+    }
+    Chromium._BROWSERS.set(address, this);
   }
 
-  /**
-   * 返回用于设置的对象
-   */
+  static get_instances(): Map<string, Chromium> {
+    return Chromium._BROWSERS;
+  }
+
   get set(): BrowserSetter {
     if (!this._setter) {
       this._setter = new BrowserSetter(this);
@@ -43,9 +54,6 @@ export class Chromium {
     return this._setter;
   }
 
-  /**
-   * 返回用于等待的对象
-   */
   get wait(): BrowserWaiter {
     if (!this._waiter) {
       this._waiter = new BrowserWaiter(this);
@@ -53,9 +61,6 @@ export class Chromium {
     return this._waiter;
   }
 
-  /**
-   * 返回用于状态检查的对象
-   */
   get states(): BrowserStates {
     if (!this._states) {
       this._states = new BrowserStates(this);
@@ -81,11 +86,77 @@ export class Chromium {
     return this._cdpSession;
   }
 
+  get none_ele_return_value(): any {
+    return Settings.none_ele_return_value;
+  }
+
+  set none_ele_return_value(value: any) {
+    Settings.none_ele_return_value = value;
+  }
+
+  get none_ele_value(): any {
+    return Settings.none_ele_value;
+  }
+
+  set none_ele_value(value: any) {
+    Settings.none_ele_value = value;
+  }
+
+  get auto_handle_alert(): boolean | null {
+    return Settings.auto_handle_alert;
+  }
+
+  set auto_handle_alert(value: boolean | null) {
+    Settings.auto_handle_alert = value;
+  }
+
+  get _disconnect_flag_value(): boolean {
+    return this._disconnect_flag;
+  }
+
+  get is_headless(): boolean {
+    return this._is_headless;
+  }
+
+  _on_disconnect(): void {
+    this._disconnect_flag = true;
+    if (this._browser) {
+      this._browser._drivers.clear();
+      this._browser._all_drivers.clear();
+      this._browser._frames.clear();
+      this._browser._relation.clear();
+    }
+  }
+
+  async _run_cdp(cmd: string, params?: Record<string, any>, _ignore: any[] = []): Promise<any> {
+    if (!this._cdpSession) {
+      throw new Error("Chromium is not connected yet.");
+    }
+    try {
+      return await this._cdpSession.send(cmd, params);
+    } catch (e: any) {
+      if (_ignore.length > 0) {
+        try {
+          raise_error(e, cmd, params);
+        } catch (raised) {
+          for (const ignoreClass of _ignore) {
+            if (raised instanceof ignoreClass) {
+              return undefined;
+            }
+          }
+          throw raised;
+        }
+      }
+      raise_error(e, cmd, params);
+    }
+  }
+
   async connect(): Promise<void> {
     if (this._browser && this._cdpSession) {
       return;
     }
 
+    this._disconnect_flag = false;
     await ensureBrowserForOptions(this._options);
 
     const address = this._options.address;
@@ -95,13 +166,19 @@ export class Chromium {
       );
     }
 
+    for (const arg of this._options.arguments) {
+      if (arg.includes('--headless')) {
+        this._is_headless = true;
+        break;
+      }
+    }
+
     let wsUrl: string;
 
     if (address.startsWith("ws://") || address.startsWith("wss://")) {
       wsUrl = address;
     } else {
       const base = address.startsWith("http://") || address.startsWith("https://") ? address : `http://${address}`;
-      // 优先从 /json/list 获取 page 级 websocket
       const listUrl = base.endsWith("/") ? `${base}json/list` : `${base}/json/list`;
       let pageWs: string | null = null;
 
@@ -114,7 +191,6 @@ export class Chromium {
           }
         }
       } catch {
-        // ignore and fallback to /json/version
       }
 
       if (pageWs) {
@@ -130,9 +206,10 @@ export class Chromium {
     }
 
     const cdp = await WebSocketCDPSession.connect(wsUrl);
+    cdp.owner = this;
     this._cdpSession = cdp;
     this._browser = await Browser.attach(cdp, {
-      userAgent: undefined, // 由 Page.init() 中设置
+      userAgent: undefined,
       viewport: undefined,
     });
   }
@@ -152,9 +229,12 @@ export class Chromium {
       try {
         await this._cdpSession.send("Browser.close");
       } catch {
-        // Ignore close errors
       }
     }
+    const address = this._options.address || '127.0.0.1:9222';
+    Chromium._BROWSERS.delete(address);
+    this._cdpSession = null;
+    this._browser = null;
   }
 
   async get_tabs(): Promise<Array<{ id: string; url: string; title: string; type: string }>> {
@@ -196,37 +276,61 @@ export class Chromium {
     if (!this._cdpSession) {
       throw new Error("Chromium is not connected yet.");
     }
-    const { targetId } = await this._cdpSession.send<{ targetId: string }>("Target.createTarget", {
-      url: url || "about:blank",
+    try {
+      const { targetId } = await this._cdpSession.send<{ targetId: string }>("Target.createTarget", {
+        url: url || "about:blank",
+      });
+      return targetId;
+    } catch {
+      return await this._new_tab_by_js(url);
+    }
+  }
+
+  private async _new_tab_by_js(url?: string): Promise<string> {
+    if (!this._cdpSession) {
+      throw new Error("Chromium is not connected yet.");
+    }
+    const tabs = await this.get_tabs();
+    if (tabs.length === 0) {
+      throw new Error("No existing tabs to open new tab from.");
+    }
+    const tabId = tabs[0].id;
+    const { sessionId } = await this._cdpSession.send("Target.attachToTarget", { targetId: tabId, flatten: true });
+    const childSession = this._cdpSession.createChildSession
+      ? this._cdpSession.createChildSession(sessionId)
+      : this._cdpSession;
+    await childSession.send("Runtime.evaluate", {
+      expression: `window.open('${url || 'about:blank'}', '_blank')`,
     });
-    return targetId;
+    await new Promise(resolve => setTimeout(resolve, 500));
+    const newTabs = await this.get_tabs();
+    for (const tab of newTabs) {
+      if (!tabs.some(t => t.id === tab.id)) {
+        return tab.id;
+      }
+    }
+    throw new Error("Failed to create new tab via JS.");
   }
 
   get is_connected(): boolean {
-    return this._cdpSession !== null && this._browser !== null;
+    return this._cdpSession !== null && this._browser !== null && !this._disconnect_flag;
   }
 
-  /**
-   * 根据 tab id 获取 Page 对象
-   */
   async get_page_by_id(tabId: string): Promise<Page> {
     if (!this._cdpSession) {
       throw new Error("Chromium is not connected yet.");
     }
     
-    // 附加到指定的 target
     const { sessionId } = await this._cdpSession.send<{ sessionId: string }>("Target.attachToTarget", {
       targetId: tabId,
       flatten: true,
     });
     
-    // 创建一个新的 CDP session 用于该 tab
     if (!this._cdpSession.createChildSession) {
       throw new Error("CDP session does not support child sessions.");
     }
     const tabCdp = this._cdpSession.createChildSession(sessionId);
     
-    // 创建 Page 对象
     const page = new Page(tabCdp);
     await page.init();
     
@@ -249,33 +353,21 @@ export class Chromium {
     };
   }
 
-  /**
-   * 返回标签页数量
-   */
   async tabs_count(): Promise<number> {
     const tabs = await this.get_tabs();
     return tabs.length;
   }
 
-  /**
-   * 返回所有标签页 id 列表
-   */
   async tab_ids(): Promise<string[]> {
     const tabs = await this.get_tabs();
     return tabs.map(t => t.id);
   }
 
-  /**
-   * 返回最新的标签页 id
-   */
   async latest_tab(): Promise<string | null> {
     const tabs = await this.get_tabs();
     return tabs.length > 0 ? tabs[tabs.length - 1].id : null;
   }
 
-  /**
-   * 获取所有域名的 cookies
-   */
   async cookies(allInfo: boolean = false): Promise<any[]> {
     if (!this._cdpSession) {
       return [];
@@ -291,24 +383,18 @@ export class Chromium {
     return cookies;
   }
 
-  /**
-   * 清除缓存
-   */
   async clear_cache(options: { cache?: boolean; cookies?: boolean } = {}): Promise<void> {
     if (!this._cdpSession) return;
     const { cache = true, cookies = true } = options;
     
+    if (cookies) {
+      await this._cdpSession.send("Storage.clearCookies");
+    }
     if (cache) {
       await this._cdpSession.send("Network.clearBrowserCache");
     }
-    if (cookies) {
-      await this._cdpSession.send("Network.clearBrowserCookies");
-    }
   }
 
-  /**
-   * 关闭多个标签页
-   */
   async close_tabs(tabIds: string | string[], others: boolean = false): Promise<void> {
     const ids = Array.isArray(tabIds) ? tabIds : [tabIds];
     const allTabs = await this.get_tabs();
@@ -326,47 +412,43 @@ export class Chromium {
     }
   }
 
-  /**
-   * 断开重连
-   */
   async reconnect(): Promise<void> {
     if (this._cdpSession?.close) {
       this._cdpSession.close();
     }
     this._cdpSession = null;
     this._browser = null;
+    this._disconnect_flag = false;
     await this.connect();
   }
 
-  /**
-   * 获取浏览器进程 ID
-   */
   async process_id(): Promise<number | null> {
     if (!this._cdpSession) return null;
     try {
-      const { processId } = await this._cdpSession.send<{ processId: number }>("SystemInfo.getProcessInfo");
-      return processId;
+      const result = await this._cdpSession.send<any>("SystemInfo.getProcessInfo");
+      const processInfo = result?.processInfo;
+      if (Array.isArray(processInfo)) {
+        const browserProc = processInfo.find((p: any) => p.type === 'browser');
+        if (browserProc && browserProc.id) {
+          this._process_id = browserProc.id;
+          return this._process_id;
+        }
+      }
+      return this._process_id;
     } catch {
-      return null;
+      return this._process_id;
     }
   }
 
-  /**
-   * 获取用户数据目录路径
-   */
   get user_data_path(): string | undefined {
     return this._options.userDataPath;
   }
 
-  /**
-   * 获取下载路径
-   */
   get download_path(): string | undefined {
     return this._options.downloadPath;
   }
 }
 
-// 默认的反检测启动参数（模仿 DrissionPage）
 const STEALTH_ARGS = [
   "--no-first-run",
   "--no-default-browser-check",
@@ -392,20 +474,16 @@ const STEALTH_ARGS = [
   "--no-service-autorun",
   "--password-store=basic",
   "--use-mock-keychain",
-  // 关键：不要添加 --enable-automation
-  // 关键：不要添加 --disable-blink-features=AutomationControlled（这本身就是检测点）
 ];
 
 async function ensureBrowserForOptions(options: ChromiumOptions): Promise<void> {
   let address = options.address;
 
-  // 如果没有显式地址，默认使用本地 127.0.0.1:9222
   if (!address) {
     address = "127.0.0.1:9222";
     options.address = address;
   }
 
-  // 规范化地址，取 host:port
   let raw = address;
   if (raw.startsWith("http://")) {
     raw = raw.substring("http://".length);
@@ -426,7 +504,6 @@ async function ensureBrowserForOptions(options: ChromiumOptions): Promise<void> 
     throw new Error(`Invalid DevTools address: ${address}`);
   }
 
-  // 远程地址或非本机地址，不负责启动，只尝试连接
   const isLocalHost = host === "127.0.0.1" || host === "localhost";
   if (!isLocalHost) {
     return;
@@ -435,17 +512,14 @@ async function ensureBrowserForOptions(options: ChromiumOptions): Promise<void> 
   const base = `http://${host}:${port}`;
   const versionUrl = base.endsWith("/") ? `${base}json/version` : `${base}/json/version`;
 
-  // 如果已经有浏览器在该端口上，直接复用
   try {
     await fetchJson(versionUrl);
     return;
   } catch {
-    // 继续尝试启动
   }
 
   const exe = options.browserPath && options.browserPath.trim().length > 0 ? options.browserPath : "chrome";
 
-  // 处理 user data 目录：优先使用 options.userDataPath，否则根据 tmpPath 和端口生成
   let userDataDir = options.userDataPath;
   if (!userDataDir) {
     const baseTmp = options.tmpPath ?? path.join(os.tmpdir(), "stealth-page");
@@ -457,7 +531,6 @@ async function ensureBrowserForOptions(options: ChromiumOptions): Promise<void> 
     fs.mkdirSync(userDataDir, { recursive: true });
   }
 
-  // 合并用户参数和反检测参数
   const args: string[] = [...STEALTH_ARGS, ...(options.arguments ?? [])];
   if (!args.some((a) => a.startsWith("--user-data-dir"))) {
     args.push(`--user-data-dir=${userDataDir}`);
@@ -469,11 +542,9 @@ async function ensureBrowserForOptions(options: ChromiumOptions): Promise<void> 
     detached: false,
   });
   child.on("error", () => {
-    // 静默错误，后续由真正的连接过程给出更明确的错误信息
   });
   child.unref();
 
-  // 给浏览器一点时间启动，真正的连接与错误由 connect() 中的逻辑处理
   await new Promise((resolve) => setTimeout(resolve, 1500));
 }
 

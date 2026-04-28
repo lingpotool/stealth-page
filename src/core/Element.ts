@@ -1,5 +1,6 @@
 import { CDPSession } from "./CDPSession";
 import { ShadowRoot } from "./ShadowRoot";
+import { NoneElement } from "./NoneElement";
 import { ElementScroller } from "../units/ElementScroller";
 import { ElementClicker } from "../units/ElementClicker";
 import { ElementWaiter } from "../units/ElementWaiter";
@@ -8,6 +9,9 @@ import { ElementRect } from "../units/ElementRect";
 import { ElementStates } from "../units/ElementStates";
 import { SelectElement } from "../units/SelectElement";
 import { Pseudo } from "../units/Pseudo";
+import { parseJsResult, convertArgument } from "./jsResult";
+import { input_text_or_keys } from "./Keys";
+import { AlertExistsError } from "../errors";
 
 export interface ElementHandleRef {
   nodeId?: number;
@@ -300,6 +304,35 @@ export class Element {
     return this._pseudo;
   }
 
+  get tab(): any {
+    return this._page;
+  }
+
+  get owner(): any {
+    return this._page;
+  }
+
+  get timeout(): any {
+    return this._page?.timeout;
+  }
+
+  async _input_focus(): Promise<void> {
+    try {
+      await this.focus();
+    } catch {
+      try {
+        await this.click.left(true);
+      } catch {}
+    }
+  }
+
+  async run_js_loaded(script: string, ...args: any[]): Promise<any> {
+    if (this._page && typeof this._page._wait_loaded === 'function') {
+      await this._page._wait_loaded();
+    }
+    return this.run_js(script, ...args);
+  }
+
   // ========== 基础属性 ==========
 
   /**
@@ -362,7 +395,7 @@ export class Element {
     const objectId = await this.getObjectId();
     const { result } = await this._session.send<{ result: { value: string } }>("Runtime.callFunctionOn", {
       objectId,
-      functionDeclaration: "function() { return (this && this.textContent) || ''; }",
+      functionDeclaration: "function() { return (this && this.innerText) || ''; }",
       returnByValue: true,
     });
     return result.value;
@@ -413,6 +446,18 @@ export class Element {
   }
 
   async attrs(): Promise<Record<string, string>> {
+    try {
+      if (this._nodeId > 0) {
+        const { attributes } = await this._session.send<{ attributes: string[] }>("DOM.getAttributes", {
+          nodeId: this._nodeId,
+        });
+        const result: Record<string, string> = {};
+        for (let i = 0; i < attributes.length - 1; i += 2) {
+          result[attributes[i]] = attributes[i + 1];
+        }
+        return result;
+      }
+    } catch {}
     const objectId = await this.getObjectId();
     const { result } = await this._session.send<{ result: { value: Record<string, string> } }>("Runtime.callFunctionOn", {
       objectId,
@@ -571,13 +616,14 @@ export class Element {
     return this.set.attr(name, value);
   }
 
-  async remove_attr(name: string): Promise<void> {
+  async remove_attr(name: string): Promise<Element> {
     const objectId = await this.getObjectId();
     await this._session.send("Runtime.callFunctionOn", {
       objectId,
       functionDeclaration: "function(n) { if (this && this.removeAttribute) { this.removeAttribute(n); } }",
       arguments: [{ value: name }],
     });
+    return this;
   }
 
   // ========== 状态检查方法（保持向后兼容） ==========
@@ -607,70 +653,70 @@ export class Element {
   /**
    * 输入文本
    */
-  async input(value: string, clear: boolean = false, byJs: boolean = false): Promise<Element> {
-    // 对齐 DrissionPage: 自动检测 file input
+  async input(value: string | (string | number)[], clear: boolean = true, byJs: boolean = false): Promise<Element> {
     try {
       const tag = await this.tag_name();
       if (tag === "input") {
         const type = await this.attr("type");
         if (type === "file") {
-          return this.set_file_input(value);
+          return this.set_file_input(typeof value === 'string' ? value : value.join('\n'));
         }
       }
-    } catch { /* 忽略 */ }
+    } catch {}
 
-    if (!byJs) {
-      // 模拟按键方式
-      await this.focus();
-      if (clear) {
-        await this.clear();
-      }
-      const page = this.getPage();
-      if (page) {
-        // 检查是否是组合键（tuple 在 JS 中用数组表示）
-        if (Array.isArray(value)) {
-          for (const key of value) {
-            await page.cdpSession.send("Input.dispatchKeyEvent", {
-              type: "keyDown",
-              key,
-            });
-            await page.cdpSession.send("Input.dispatchKeyEvent", {
-              type: "keyUp",
-              key,
-            });
-          }
-          return this;
-        }
-        // 普通文本输入
-        for (const char of String(value)) {
-          await page.cdpSession.send("Input.dispatchKeyEvent", {
-            type: "keyDown",
-            text: char,
-          });
-          await page.cdpSession.send("Input.dispatchKeyEvent", {
-            type: "keyUp",
-            text: char,
-          });
-        }
-        return this;
-      }
+    await this.wait.clickable();
+
+    if (clear) {
+      await this.clear(byJs);
     }
-    // js 方式
+
+    if (byJs) {
+      const objectId = await this.getObjectId();
+      await this._session.send("Runtime.callFunctionOn", {
+        objectId,
+        functionDeclaration: `function(v) { 
+          var el = this; 
+          if (!el) return; 
+          el.focus && el.focus(); 
+          if (typeof el.value !== 'undefined') {
+            el.value = v; 
+          } else if (el.contentEditable === 'true') {
+            el.innerText = v;
+          }
+          if (typeof Event === 'function') { 
+            el.dispatchEvent(new Event('input', { bubbles: true })); 
+            el.dispatchEvent(new Event('change', { bubbles: true })); 
+          } 
+        }`,
+        arguments: [{ value: typeof value === 'string' ? value : value.join('') }],
+      });
+      return this;
+    }
+
+    const page = this.getPage();
+    if (page) {
+      await input_text_or_keys(page, value);
+      return this;
+    }
+
     const objectId = await this.getObjectId();
     await this._session.send("Runtime.callFunctionOn", {
       objectId,
-      functionDeclaration: `function(v, c) { 
+      functionDeclaration: `function(v) { 
         var el = this; 
         if (!el) return; 
         el.focus && el.focus(); 
-        if (c) el.value = ''; 
-        el.value = v; 
+        if (typeof el.value !== 'undefined') {
+          el.value = v; 
+        } else if (el.contentEditable === 'true') {
+          el.innerText = v;
+        }
         if (typeof Event === 'function') { 
           el.dispatchEvent(new Event('input', { bubbles: true })); 
           el.dispatchEvent(new Event('change', { bubbles: true })); 
         } 
       }`,
-      arguments: [{ value: String(value) }, { value: clear }],
+      arguments: [{ value: typeof value === 'string' ? value : value.join('') }],
     });
     return this;
   }
@@ -678,20 +724,18 @@ export class Element {
   /**
    * 清空内容
    */
-  async clear(byJs: boolean = false): Promise<void> {
+  async clear(byJs: boolean = false): Promise<Element> {
     if (!byJs) {
-      // 模拟按键方式：ctrl+a + delete
       await this.focus();
       const page = this.getPage();
       if (page) {
-        await page.cdpSession.send("Input.dispatchKeyEvent", { type: "keyDown", key: "a", code: "KeyA", modifiers: 2 }); // ctrl+a
+        await page.cdpSession.send("Input.dispatchKeyEvent", { type: "keyDown", key: "a", code: "KeyA", modifiers: 2 });
         await page.cdpSession.send("Input.dispatchKeyEvent", { type: "keyUp", key: "a", code: "KeyA", modifiers: 2 });
         await page.cdpSession.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Delete", code: "Delete" });
         await page.cdpSession.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Delete", code: "Delete" });
-        return;
+        return this;
       }
     }
-    // js 方式
     const objectId = await this.getObjectId();
     await this._session.send("Runtime.callFunctionOn", {
       objectId,
@@ -704,17 +748,17 @@ export class Element {
         }
       }`,
     });
+    return this;
   }
 
   /**
    * 获取焦点（对齐 DrissionPage: 优先使用 DOM.focus + backendNodeId）
    */
-  async focus(): Promise<void> {
-    // 优先使用 CDP DOM.focus（更可靠）
+  async focus(): Promise<Element> {
     if (this._backendNodeId > 0) {
       try {
         await this._session.send("DOM.focus", { backendNodeId: this._backendNodeId });
-        return;
+        return this;
       } catch { /* fallback to JS */ }
     }
     const objectId = await this.getObjectId();
@@ -722,36 +766,41 @@ export class Element {
       objectId,
       functionDeclaration: "function() { if (this && this.focus) { this.focus(); } }",
     });
+    return this;
   }
 
   /**
    * 鼠标悬停
    */
-  async hover(offsetX?: number, offsetY?: number): Promise<void> {
+  async hover(offsetX?: number, offsetY?: number): Promise<Element> {
+    if (this._page && this._page.actions) {
+      await this._page.actions.move_to(this, offsetX, offsetY);
+      return this;
+    }
+    let x: number, y: number;
     if (offsetX !== undefined || offsetY !== undefined) {
-      // 使用偏移量，相对于元素左上角
       const loc = await this.rect.viewport_location();
       const size = await this.size();
-      const x = loc.x + (offsetX ?? size.width / 2);
-      const y = loc.y + (offsetY ?? size.height / 2);
-      await this._session.send("Input.dispatchMouseEvent", {
-        type: "mouseMoved",
-        x,
-        y,
-      });
+      x = loc.x + (offsetX ?? size.width / 2);
+      y = loc.y + (offsetY ?? size.height / 2);
     } else {
       const loc = await this.rect.viewport_midpoint();
-      await this._session.send("Input.dispatchMouseEvent", {
-        type: "mouseMoved",
-        x: loc.x,
-        y: loc.y,
-      });
+      x = loc.x;
+      y = loc.y;
     }
+    await this._session.send("Input.dispatchMouseEvent", {
+      type: "mouseMoved",
+      x,
+      y,
+    });
+    const objectId = await this.getObjectId();
+    await this._session.send("Runtime.callFunctionOn", {
+      objectId,
+      functionDeclaration: `function() { this.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); this.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true })); }`,
+    });
+    return this;
   }
 
-  /**
-   * 双击
-   */
   async double_click(): Promise<void> {
     await this.click.multi(2);
   }
@@ -808,7 +857,14 @@ export class Element {
   /**
    * 拖拽到相对位置
    */
-  async drag(offsetX: number = 0, offsetY: number = 0, duration: number = 0.5): Promise<void> {
+  async drag(offsetX: number = 0, offsetY: number = 0, duration: number = 0.5): Promise<Element> {
+    if (this._page && this._page.actions) {
+      const loc = await this.rect.viewport_midpoint();
+      await this._page.actions.mouse_down(loc.x, loc.y);
+      await this._page.actions.mouse_move(loc.x + offsetX, loc.y + offsetY);
+      await this._page.actions.mouse_up(loc.x + offsetX, loc.y + offsetY);
+      return this;
+    }
     const loc = await this.rect.viewport_midpoint();
     const startX = loc.x;
     const startY = loc.y;
@@ -816,12 +872,19 @@ export class Element {
     const endY = startY + offsetY;
 
     await this._performDrag(startX, startY, endX, endY, duration);
+    return this;
   }
 
-  /**
-   * 拖拽到目标元素或坐标
-   */
-  async drag_to(target: Element | { x: number; y: number }, duration: number = 0.5): Promise<void> {
+  async drag_to(target: Element | { x: number; y: number }, duration: number = 0.5): Promise<Element> {
+    if (this._page && this._page.actions) {
+      await this._page.actions.drag_and_drop(
+        (await this.rect.viewport_midpoint()).x,
+        (await this.rect.viewport_midpoint()).y,
+        target instanceof Element ? (await target.rect.viewport_midpoint()).x : target.x,
+        target instanceof Element ? (await target.rect.viewport_midpoint()).y : target.y,
+      );
+      return this;
+    }
     const loc = await this.rect.viewport_midpoint();
     let endX: number, endY: number;
 
@@ -835,6 +898,7 @@ export class Element {
     }
 
     await this._performDrag(loc.x, loc.y, endX, endY, duration);
+    return this;
   }
 
   private async _performDrag(startX: number, startY: number, endX: number, endY: number, duration: number): Promise<void> {
@@ -893,12 +957,27 @@ export class Element {
 
   // ========== DOM 导航方法 ==========
 
-  async parent(levelOrLoc: number | string = 1, _index: number = 1): Promise<Element | null> {
+  async parent(levelOrLoc: number | string = 1, _index: number = 1): Promise<Element | NoneElement> {
     if (typeof levelOrLoc === "number") {
-      return this._getParentByLevel(levelOrLoc);
+      const result = await this._getParentByLevel(levelOrLoc);
+      if (!result) {
+        if (NoneElement.raiseWhenNotFound) {
+          const { ElementNotFoundError } = await import("../errors");
+          throw new ElementNotFoundError("parent");
+        }
+        return new NoneElement("parent", { level: levelOrLoc });
+      }
+      return result;
     }
-    // TODO: 支持定位符查找父元素
-    return this._getParentByLevel(1);
+    const result = await this._getParentByLevel(1);
+    if (!result) {
+      if (NoneElement.raiseWhenNotFound) {
+        const { ElementNotFoundError } = await import("../errors");
+        throw new ElementNotFoundError("parent");
+      }
+      return new NoneElement("parent", { locator: levelOrLoc });
+    }
+    return result;
   }
 
   private async _getParentByLevel(level: number): Promise<Element | null> {
@@ -924,13 +1003,23 @@ export class Element {
     return this._createElement(nodeId);
   }
 
-  async child(locatorOrIndex: string | number = 1, index: number = 1): Promise<Element | null> {
+  async child(locatorOrIndex: string | number = 1, index: number = 1, eleOnly: boolean = true): Promise<Element | NoneElement> {
     if (typeof locatorOrIndex === "number") {
-      return this._getChildByIndex(locatorOrIndex);
+      if (eleOnly) {
+        return this._getChildByIndex(locatorOrIndex) as Promise<any>;
+      }
+      return this._getChildNodeByIndex(locatorOrIndex) as Promise<any>;
     }
-    // 使用定位符查找
-    const children = await this.children(locatorOrIndex);
-    return children[index - 1] ?? null;
+    const children = await this.children(locatorOrIndex, eleOnly);
+    const result = children[index - 1] ?? null;
+    if (!result) {
+      if (NoneElement.raiseWhenNotFound) {
+        const { ElementNotFoundError } = await import("../errors");
+        throw new ElementNotFoundError(locatorOrIndex);
+      }
+      return new NoneElement("child", { locator: locatorOrIndex, index });
+    }
+    return result;
   }
 
   private async _getChildByIndex(idx: number): Promise<Element | null> {
@@ -939,8 +1028,8 @@ export class Element {
       objectId,
       functionDeclaration: `function(i) { 
         const children = Array.from(this.children);
-        const idx = i > 0 ? i - 1 : children.length + i;
-        return children[idx] || null;
+        const index = i > 0 ? i - 1 : children.length + i;
+        return children[index] || null;
       }`,
       arguments: [{ value: idx }],
     });
@@ -954,41 +1043,97 @@ export class Element {
     return this._createElement(nodeId);
   }
 
-  async children(locator: string = ""): Promise<Element[]> {
+  private async _getChildNodeByIndex(idx: number): Promise<Element | null> {
+    const objectId = await this.getObjectId();
+    const { result } = await this._session.send<{ result: { objectId?: string } }>("Runtime.callFunctionOn", {
+      objectId,
+      functionDeclaration: `function(i) { 
+        const nodes = Array.from(this.childNodes).filter(n => n.nodeType === 1 || n.nodeType === 3 || n.nodeType === 8);
+        const index = i > 0 ? i - 1 : nodes.length + i;
+        return nodes[index] || null;
+      }`,
+      arguments: [{ value: idx }],
+    });
+    
+    if (!result.objectId) return null;
+    
+    await this._ensureDomTree();
+    const { nodeId } = await this._session.send<{ nodeId: number }>("DOM.requestNode", {
+      objectId: result.objectId,
+    });
+    return this._createElement(nodeId);
+  }
+
+  async children(locator: string = "", eleOnly: boolean = true): Promise<Element[]> {
     if (locator) {
       return this.eles(locator);
     }
     
     const objectId = await this.getObjectId();
+    const js = eleOnly
+      ? "function() { return this.children ? this.children.length : 0; }"
+      : "function() { return this.childNodes ? Array.from(this.childNodes).filter(n => n.nodeType === 1 || n.nodeType === 3 || n.nodeType === 8).length : 0; }";
     const { result } = await this._session.send<{ result: { value: number } }>("Runtime.callFunctionOn", {
       objectId,
-      functionDeclaration: "function() { return this.children ? this.children.length : 0; }",
+      functionDeclaration: js,
       returnByValue: true,
     });
     
     const count = result.value;
     const elements: Element[] = [];
     for (let i = 1; i <= count; i++) {
-      const child = await this._getChildByIndex(i);
+      const child = eleOnly ? await this._getChildByIndex(i) : await this._getChildNodeByIndex(i);
       if (child) elements.push(child);
     }
     return elements;
   }
 
-  async next(locator: string = "", index: number = 1): Promise<Element | null> {
+  async next(locator: string = "", index: number = 1, eleOnly: boolean = true): Promise<Element | NoneElement> {
     if (locator) {
-      const nexts = await this.nexts(locator);
-      return nexts[index - 1] ?? null;
+      const nexts = await this.nexts(locator, eleOnly);
+      const result = nexts[index - 1] ?? null;
+      if (!result) {
+        if (NoneElement.raiseWhenNotFound) {
+          const { ElementNotFoundError } = await import("../errors");
+          throw new ElementNotFoundError(locator);
+        }
+        return new NoneElement("next", { locator, index });
+      }
+      return result;
     }
-    return this._getSibling("nextElementSibling", index);
+    const result = await this._getSibling(eleOnly ? "nextElementSibling" : "nextSibling", index);
+    if (!result) {
+      if (NoneElement.raiseWhenNotFound) {
+        const { ElementNotFoundError } = await import("../errors");
+        throw new ElementNotFoundError("next sibling");
+      }
+      return new NoneElement("next", { index });
+    }
+    return result;
   }
 
-  async prev(locator: string = "", index: number = 1): Promise<Element | null> {
+  async prev(locator: string = "", index: number = 1, eleOnly: boolean = true): Promise<Element | NoneElement> {
     if (locator) {
-      const prevs = await this.prevs(locator);
-      return prevs[index - 1] ?? null;
+      const prevs = await this.prevs(locator, eleOnly);
+      const result = prevs[index - 1] ?? null;
+      if (!result) {
+        if (NoneElement.raiseWhenNotFound) {
+          const { ElementNotFoundError } = await import("../errors");
+          throw new ElementNotFoundError(locator);
+        }
+        return new NoneElement("prev", { locator, index });
+      }
+      return result;
     }
-    return this._getSibling("previousElementSibling", index);
+    const result = await this._getSibling(eleOnly ? "previousElementSibling" : "previousSibling", index);
+    if (!result) {
+      if (NoneElement.raiseWhenNotFound) {
+        const { ElementNotFoundError } = await import("../errors");
+        throw new ElementNotFoundError("prev sibling");
+      }
+      return new NoneElement("prev", { index });
+    }
+    return result;
   }
 
   private async _getSibling(direction: string, count: number): Promise<Element | null> {
@@ -1014,29 +1159,46 @@ export class Element {
     return this._createElement(nodeId);
   }
 
-  async nexts(locator: string = ""): Promise<Element[]> {
-    return this._getSiblings("nextElementSibling", locator);
+  async nexts(locator: string = "", eleOnly: boolean = true): Promise<Element[]> {
+    const direction = eleOnly ? "nextElementSibling" : "nextSibling";
+    return this._getSiblings(direction, locator, eleOnly);
   }
 
-  async prevs(locator: string = ""): Promise<Element[]> {
-    return this._getSiblings("previousElementSibling", locator);
+  async prevs(locator: string = "", eleOnly: boolean = true): Promise<Element[]> {
+    const direction = eleOnly ? "previousElementSibling" : "previousSibling";
+    return this._getSiblings(direction, locator, eleOnly);
   }
 
-  private async _getSiblings(direction: string, locator: string): Promise<Element[]> {
+  private async _getSiblings(direction: string, locator: string, eleOnly: boolean = true): Promise<Element[]> {
     const objectId = await this.getObjectId();
+    const countJs = eleOnly
+      ? `function(dir, selector) {
+          const results = [];
+          let el = this[dir];
+          while (el) {
+            if (!selector || (el.matches && el.matches(selector))) {
+              results.push(1);
+            }
+            el = el[dir];
+          }
+          return results.length;
+        }`
+      : `function(dir, selector) {
+          const results = [];
+          let el = this[dir];
+          while (el) {
+            if (el.nodeType === 1 && selector && el.matches && el.matches(selector)) {
+              results.push(1);
+            } else if (!selector) {
+              results.push(1);
+            }
+            el = el[dir];
+          }
+          return results.length;
+        }`;
     const { result } = await this._session.send<{ result: { value: number } }>("Runtime.callFunctionOn", {
       objectId,
-      functionDeclaration: `function(dir, selector) {
-        const results = [];
-        let el = this[dir];
-        while (el) {
-          if (!selector || el.matches(selector)) {
-            results.push(1); // 占位
-          }
-          el = el[dir];
-        }
-        return results.length;
-      }`,
+      functionDeclaration: countJs,
       arguments: [{ value: direction }, { value: locator }],
       returnByValue: true,
     });
@@ -1044,22 +1206,39 @@ export class Element {
     const count = result.value;
     const elements: Element[] = [];
     
-    // 逐个获取
-    for (let i = 0; i < count; i++) {
-      const { result: sibResult } = await this._session.send<{ result: { objectId?: string } }>("Runtime.callFunctionOn", {
-        objectId,
-        functionDeclaration: `function(dir, selector, idx) {
+    const getItemJs = eleOnly
+      ? `function(dir, selector, idx) {
           let el = this[dir];
           let found = 0;
           while (el) {
-            if (!selector || el.matches(selector)) {
+            if (!selector || (el.matches && el.matches(selector))) {
               if (found === idx) return el;
               found++;
             }
             el = el[dir];
           }
           return null;
-        }`,
+        }`
+      : `function(dir, selector, idx) {
+          let el = this[dir];
+          let found = 0;
+          while (el) {
+            if (el.nodeType === 1 && selector && el.matches && el.matches(selector)) {
+              if (found === idx) return el;
+              found++;
+            } else if (!selector) {
+              if (found === idx) return el;
+              found++;
+            }
+            el = el[dir];
+          }
+          return null;
+        }`;
+
+    for (let i = 0; i < count; i++) {
+      const { result: sibResult } = await this._session.send<{ result: { objectId?: string } }>("Runtime.callFunctionOn", {
+        objectId,
+        functionDeclaration: getItemJs,
         arguments: [{ value: direction }, { value: locator }, { value: i }],
       });
       
@@ -1075,17 +1254,33 @@ export class Element {
     return elements;
   }
 
-  async before(locator: string = "", index: number = 1): Promise<Element | null> {
-    const befores = await this.befores(locator);
-    return befores[index - 1] ?? null;
+  async before(locator: string = "", index: number = 1, eleOnly: boolean = true): Promise<Element | NoneElement> {
+    const befores = await this.befores(locator, eleOnly);
+    const result = befores[index - 1] ?? null;
+    if (!result) {
+      if (NoneElement.raiseWhenNotFound) {
+        const { ElementNotFoundError } = await import("../errors");
+        throw new ElementNotFoundError(locator || "before");
+      }
+      return new NoneElement("before", { locator, index });
+    }
+    return result;
   }
 
-  async after(locator: string = "", index: number = 1): Promise<Element | null> {
-    const afters = await this.afters(locator);
-    return afters[index - 1] ?? null;
+  async after(locator: string = "", index: number = 1, eleOnly: boolean = true): Promise<Element | NoneElement> {
+    const afters = await this.afters(locator, eleOnly);
+    const result = afters[index - 1] ?? null;
+    if (!result) {
+      if (NoneElement.raiseWhenNotFound) {
+        const { ElementNotFoundError } = await import("../errors");
+        throw new ElementNotFoundError(locator || "after");
+      }
+      return new NoneElement("after", { locator, index });
+    }
+    return result;
   }
 
-  async befores(locator: string = ""): Promise<Element[]> {
+  async befores(locator: string = "", eleOnly: boolean = true): Promise<Element[]> {
     // 获取文档中此元素之前的所有匹配元素
     const objectId = await this.getObjectId();
     const { result } = await this._session.send<{ result: { value: number } }>("Runtime.callFunctionOn", {
@@ -1116,7 +1311,7 @@ export class Element {
     return nodeIds.slice(0, count).map(nodeId => this._createElement(nodeId));
   }
 
-  async afters(locator: string = ""): Promise<Element[]> {
+  async afters(locator: string = "", eleOnly: boolean = true): Promise<Element[]> {
     const objectId = await this.getObjectId();
     const { result } = await this._session.send<{ result: { value: number } }>("Runtime.callFunctionOn", {
       objectId,
@@ -1163,15 +1358,30 @@ export class Element {
   // ========== Shadow DOM ==========
 
   async shadow_root(): Promise<ShadowRoot | null> {
+    await this._ensureBackendNodeId();
+    if (this._nodeId > 0) {
+      try {
+        const { node } = await this._session.send<{ node: { shadowRoots?: Array<{ backendNodeId: number }> } }>("DOM.describeNode", {
+          nodeId: this._nodeId,
+        });
+        if (node.shadowRoots && node.shadowRoots.length > 0) {
+          const shadowBackendId = node.shadowRoots[0].backendNodeId;
+          const { object } = await this._session.send<{ object: { objectId: string } }>("DOM.resolveNode", {
+            backendNodeId: shadowBackendId,
+          });
+          return new ShadowRoot(this, { objId: object.objectId, backendId: shadowBackendId });
+        }
+      } catch { /* fallback */ }
+    }
+
     const objectId = await this.getObjectId();
     const { result } = await this._session.send<{ result: { objectId?: string; subtype?: string } }>("Runtime.callFunctionOn", {
       objectId,
       functionDeclaration: "function() { return this.shadowRoot; }",
     });
-    
+
     if (!result.objectId || result.subtype === "null") return null;
-    
-    // 获取 backendNodeId
+
     await this._ensureDomTree();
     try {
       const { nodeId } = await this._session.send<{ nodeId: number }>("DOM.requestNode", {
@@ -1182,7 +1392,7 @@ export class Element {
         try {
           const desc = await this._session.send<{ node: { backendNodeId: number } }>("DOM.describeNode", { nodeId });
           backendId = desc.node.backendNodeId;
-        } catch { /* 忽略 */ }
+        } catch { }
       }
       return new ShadowRoot(this, { objId: result.objectId, backendId });
     } catch {
@@ -1199,13 +1409,52 @@ export class Element {
 
   // ========== 元素查找 ==========
 
-  async ele(locator: string, index: number = 1): Promise<Element | null> {
+  async ele(locator: string, index: number = 1, timeout?: number): Promise<Element | NoneElement> {
+    if (timeout !== undefined && timeout > 0) {
+      const deadline = Date.now() + timeout * 1000;
+      while (true) {
+        const result = await this._eleOnce(locator, index);
+        if (result) return result;
+        if (Date.now() >= deadline) break;
+        await new Promise(r => setTimeout(r, 200));
+      }
+      if (NoneElement.raiseWhenNotFound) {
+        const { ElementNotFoundError } = await import("../errors");
+        throw new ElementNotFoundError(locator);
+      }
+      return new NoneElement("ele", { locator, index });
+    }
+    const result = await this._eleOnce(locator, index);
+    if (!result) {
+      if (NoneElement.raiseWhenNotFound) {
+        const { ElementNotFoundError } = await import("../errors");
+        throw new ElementNotFoundError(locator);
+      }
+      return new NoneElement("ele", { locator, index });
+    }
+    return result;
+  }
+
+  private async _eleOnce(locator: string, index: number = 1): Promise<Element | null> {
     const elements = await this.eles(locator);
     const idx = index > 0 ? index - 1 : elements.length + index;
     return elements[idx] ?? null;
   }
 
-  async eles(locator: string): Promise<Element[]> {
+  async eles(locator: string, timeout?: number): Promise<Element[]> {
+    if (timeout !== undefined && timeout > 0) {
+      const deadline = Date.now() + timeout * 1000;
+      while (true) {
+        const result = await this._elesOnce(locator);
+        if (result.length > 0) return result;
+        if (Date.now() >= deadline) break;
+        await new Promise(r => setTimeout(r, 200));
+      }
+    }
+    return this._elesOnce(locator);
+  }
+
+  private async _elesOnce(locator: string): Promise<Element[]> {
     const { parseLocator } = await import("./locator");
     const parsed = parseLocator(locator);
     const objectId = await this.getObjectId();
@@ -1260,12 +1509,10 @@ export class Element {
 
   private async _elesByXPath(xpath: string): Promise<Element[]> {
     const objectId = await this.getObjectId();
-    const escapedXpath = xpath.replace(/'/g, "\\'");
 
-    // 对齐 DrissionPage: 使用 Runtime.callFunctionOn + document.evaluate，一次性获取所有结果
-    const js = `function(){
+    const js = `function(xpath){
       let a=[];
-      let e=document.evaluate('${escapedXpath}',this,null,7,null);
+      let e=document.evaluate(xpath,this,null,7,null);
       for(let i=0;i<e.snapshotLength;i++){
         let node=e.snapshotItem(i);
         if(node.nodeType===1){a.push(node);}
@@ -1278,6 +1525,7 @@ export class Element {
     const { result } = await this._session.send<{ result: { objectId?: string; subtype?: string; description?: string } }>("Runtime.callFunctionOn", {
       objectId,
       functionDeclaration: js,
+      arguments: [{ value: xpath }],
       returnByValue: false,
       awaitPromise: true,
       userGesture: true,
@@ -1373,7 +1621,10 @@ export class Element {
   // ========== JavaScript 执行 ==========
 
   async run_js(script: string, ...args: any[]): Promise<any> {
-    // 检查最后一个参数是否为选项对象 { asExpr, timeout }
+    if (this._page && (this._page as any)._has_alert) {
+      throw new AlertExistsError();
+    }
+
     let asExpr = false;
     let timeout: number | undefined;
     if (args.length > 0 && typeof args[args.length - 1] === 'object' && args[args.length - 1] !== null
@@ -1383,18 +1634,21 @@ export class Element {
       timeout = opts.timeout;
     }
 
+    const endTime = timeout !== undefined ? Date.now() + timeout * 1000 : undefined;
+
     if (asExpr) {
       const params: Record<string, any> = {
         expression: script,
-        returnByValue: true,
+        returnByValue: false,
+        awaitPromise: true,
+        userGesture: true,
       };
       if (timeout !== undefined) params.timeout = timeout * 1000;
-      const { result } = await this._session.send<{ result: { value: any } }>("Runtime.evaluate", params);
-      return result.value;
+      const { result } = await this._session.send<{ result: any }>("Runtime.evaluate", params);
+      return parseJsResult({ session: this._session, getPage: () => this._page }, result, endTime);
     }
 
     const objectId = await this.getObjectId();
-    // 对齐 DrissionPage: 如果不是函数形式，包装成函数
     let funcDecl = script.trim();
     if (!funcDecl.startsWith("function") && !funcDecl.startsWith("(") && !funcDecl.startsWith("async")) {
       funcDecl = `function(){${funcDecl}}`;
@@ -1402,18 +1656,17 @@ export class Element {
     const params: Record<string, any> = {
       objectId,
       functionDeclaration: funcDecl,
-      arguments: args.map(a => ({ value: a })),
-      returnByValue: true,
+      arguments: args.map(a => convertArgument(a)),
+      returnByValue: false,
       awaitPromise: true,
       userGesture: true,
     };
     if (timeout !== undefined) params.timeout = timeout * 1000;
-    const { result } = await this._session.send<{ result: { value: any } }>("Runtime.callFunctionOn", params);
-    return result.value;
+    const { result } = await this._session.send<{ result: any }>("Runtime.callFunctionOn", params);
+    return parseJsResult({ session: this._session, getPage: () => this._page }, result, endTime);
   }
 
   async run_async_js(script: string, ...args: any[]): Promise<void> {
-    // 检查最后一个参数是否为选项对象 { asExpr }
     let asExpr = false;
     if (args.length > 0 && typeof args[args.length - 1] === 'object' && args[args.length - 1] !== null
         && 'asExpr' in args[args.length - 1]) {
@@ -1436,7 +1689,7 @@ export class Element {
     await this._session.send("Runtime.callFunctionOn", {
       objectId,
       functionDeclaration: funcDecl,
-      arguments: args.map(a => ({ value: a })),
+      arguments: args.map(a => convertArgument(a)),
       awaitPromise: false,
       userGesture: true,
     });
@@ -1602,28 +1855,19 @@ export class Element {
   /**
    * 获取元素右边的指定元素
    */
-  async east(locOrPixel?: string | number, index: number = 1): Promise<Element | null> {
+  async east(locOrPixel?: string | number, index: number = 1): Promise<Element | NoneElement> {
     return this._getRelativeEle("east", locOrPixel, index);
   }
 
-  /**
-   * 获取元素下方的指定元素
-   */
-  async south(locOrPixel?: string | number, index: number = 1): Promise<Element | null> {
+  async south(locOrPixel?: string | number, index: number = 1): Promise<Element | NoneElement> {
     return this._getRelativeEle("south", locOrPixel, index);
   }
 
-  /**
-   * 获取元素左边的指定元素
-   */
-  async west(locOrPixel?: string | number, index: number = 1): Promise<Element | null> {
+  async west(locOrPixel?: string | number, index: number = 1): Promise<Element | NoneElement> {
     return this._getRelativeEle("west", locOrPixel, index);
   }
 
-  /**
-   * 获取元素上方的指定元素
-   */
-  async north(locOrPixel?: string | number, index: number = 1): Promise<Element | null> {
+  async north(locOrPixel?: string | number, index: number = 1): Promise<Element | NoneElement> {
     return this._getRelativeEle("north", locOrPixel, index);
   }
 
@@ -1662,11 +1906,10 @@ export class Element {
   /**
    * 获取相对本元素指定偏移量位置的元素
    */
-  async offset(locator?: string, x?: number, y?: number, timeout?: number): Promise<Element | null> {
+  async offset(locator?: string, x?: number, y?: number, timeout?: number): Promise<Element | NoneElement> {
     const rect = await this.rect.viewport_location();
     const size = await this.rect.size();
     
-    // 如果没有指定偏移量，定位到元素中间点
     const targetX = x !== undefined ? rect.x + x : rect.x + size.width / 2;
     const targetY = y !== undefined ? rect.y + y : rect.y + size.height / 2;
     
@@ -1675,7 +1918,13 @@ export class Element {
       returnByValue: false,
     });
     
-    if (!result.objectId) return null;
+    if (!result.objectId) {
+      if (NoneElement.raiseWhenNotFound) {
+        const { ElementNotFoundError } = await import("../errors");
+        throw new ElementNotFoundError("offset");
+      }
+      return new NoneElement("offset", { locator, x: targetX, y: targetY });
+    }
     
     await this._ensureDomTree();
     const { nodeId } = await this._session.send<{ nodeId: number }>("DOM.requestNode", {
@@ -1684,7 +1933,6 @@ export class Element {
     
     const ele = this._createElement(nodeId);
     
-    // 如果有定位符，在找到的元素中继续查找
     if (locator) {
       return ele.ele(locator);
     }
@@ -1692,88 +1940,126 @@ export class Element {
     return ele;
   }
 
-  private async _getRelativeEle(direction: "east" | "west" | "north" | "south", locOrPixel?: string | number, index: number = 1): Promise<Element | null> {
-    // 使用视口坐标，因为 elementFromPoint 需要视口坐标
-    const myViewportLoc = await this.rect.viewport_midpoint();
-    const myCenterX = myViewportLoc.x;
-    const myCenterY = myViewportLoc.y;
-    
-    // 如果是像素距离
+  private async _getRelativeEle(direction: "east" | "west" | "north" | "south", locOrPixel?: string | number, index: number = 1): Promise<Element | NoneElement> {
+    const myViewportLoc = await this.rect.viewport_location();
+    const mySize = await this.rect.size();
+
+    const myLeft = myViewportLoc.x;
+    const myTop = myViewportLoc.y;
+    const myRight = myLeft + mySize.width;
+    const myBottom = myTop + mySize.height;
+
     if (typeof locOrPixel === "number") {
-      let targetX = myCenterX;
-      let targetY = myCenterY;
-      
+      let targetX: number, targetY: number;
       switch (direction) {
-        case "east": targetX += locOrPixel; break;
-        case "west": targetX -= locOrPixel; break;
-        case "south": targetY += locOrPixel; break;
-        case "north": targetY -= locOrPixel; break;
+        case "east": targetX = myRight + locOrPixel; targetY = myTop + mySize.height / 2; break;
+        case "west": targetX = myLeft - locOrPixel; targetY = myTop + mySize.height / 2; break;
+        case "south": targetX = myLeft + mySize.width / 2; targetY = myBottom + locOrPixel; break;
+        case "north": targetX = myLeft + mySize.width / 2; targetY = myTop - locOrPixel; break;
       }
-      
-      const { result } = await this._session.send<{ result: { objectId?: string } }>("Runtime.evaluate", {
-        expression: `document.elementFromPoint(${targetX}, ${targetY})`,
-      });
-      
-      if (!result.objectId) return null;
-      
-      await this._ensureDomTree();
-      const { nodeId } = await this._session.send<{ nodeId: number }>("DOM.requestNode", {
-        objectId: result.objectId,
-      });
-      return this._createElement(nodeId);
-    }
-    
-    // 如果是定位符，查找所有匹配元素并按方向筛选
-    const selector = locOrPixel || "*";
-    const docNodeId = await this._getDocumentNodeId();
-    const { nodeIds } = await this._session.send<{ nodeIds: number[] }>("DOM.querySelectorAll", {
-      nodeId: docNodeId,
-      selector,
-    });
-    
-    const candidates: Array<{ ele: Element; distance: number }> = [];
-    
-    for (const nodeId of nodeIds) {
-      const ele = this._createElement(nodeId);
+
       try {
-        const midpoint = await ele.rect.viewport_midpoint();
-        const centerX = midpoint.x;
-        const centerY = midpoint.y;
-        
-        let isInDirection = false;
-        let distance = 0;
-        
-        switch (direction) {
-          case "east":
-            isInDirection = centerX > myCenterX;
-            distance = centerX - myCenterX;
-            break;
-          case "west":
-            isInDirection = centerX < myCenterX;
-            distance = myCenterX - centerX;
-            break;
-          case "south":
-            isInDirection = centerY > myCenterY;
-            distance = centerY - myCenterY;
-            break;
-          case "north":
-            isInDirection = centerY < myCenterY;
-            distance = myCenterY - centerY;
-            break;
+        const { nodeId } = await this._session.send<{ nodeId: number }>("DOM.getNodeForLocation", {
+          x: Math.round(targetX),
+          y: Math.round(targetY),
+        });
+        if (nodeId > 0) return this._createElement(nodeId);
+      } catch { }
+      if (NoneElement.raiseWhenNotFound) {
+        const { ElementNotFoundError } = await import("../errors");
+        throw new ElementNotFoundError(direction);
+      }
+      return new NoneElement(direction, { locOrPixel, index });
+    }
+
+    const locator = locOrPixel || "*";
+    const { parseLocator } = await import("./locator");
+    const parsed = parseLocator(locator);
+
+    const step = 1;
+    let found: Element[] = [];
+    const seenBackendIds = new Set<number>();
+    if (this._backendNodeId > 0) seenBackendIds.add(this._backendNodeId);
+
+    switch (direction) {
+      case "east": {
+        for (let x = Math.round(myRight); x < myRight + 2000 && found.length < index; x += step) {
+          for (const y of _scanLine(myTop, myBottom)) {
+            const ele = await this._getNodeAtLocation(x, y, seenBackendIds);
+            if (ele) {
+              found.push(ele);
+              seenBackendIds.add(ele.backendNodeId);
+            }
+          }
         }
-        
-        if (isInDirection && distance > 0) {
-          candidates.push({ ele, distance });
+        break;
+      }
+      case "west": {
+        for (let x = Math.round(myLeft - 1); x > myLeft - 2000 && found.length < index; x -= step) {
+          for (const y of _scanLine(myTop, myBottom)) {
+            const ele = await this._getNodeAtLocation(x, y, seenBackendIds);
+            if (ele) {
+              found.push(ele);
+              seenBackendIds.add(ele.backendNodeId);
+            }
+          }
         }
-      } catch {
-        // 忽略无法获取位置的元素
+        break;
+      }
+      case "south": {
+        for (let y = Math.round(myBottom); y < myBottom + 2000 && found.length < index; y += step) {
+          for (const x of _scanLine(myLeft, myRight)) {
+            const ele = await this._getNodeAtLocation(x, y, seenBackendIds);
+            if (ele) {
+              found.push(ele);
+              seenBackendIds.add(ele.backendNodeId);
+            }
+          }
+        }
+        break;
+      }
+      case "north": {
+        for (let y = Math.round(myTop - 1); y > myTop - 2000 && found.length < index; y -= step) {
+          for (const x of _scanLine(myLeft, myRight)) {
+            const ele = await this._getNodeAtLocation(x, y, seenBackendIds);
+            if (ele) {
+              found.push(ele);
+              seenBackendIds.add(ele.backendNodeId);
+            }
+          }
+        }
+        break;
       }
     }
-    
-    // 按距离排序
-    candidates.sort((a, b) => a.distance - b.distance);
-    
-    return candidates[index - 1]?.ele ?? null;
+
+    if (parsed.type !== "css" || parsed.value !== "*") {
+      found = await _filterByLocator(found, locator);
+    }
+
+    const result = found[index - 1] ?? null;
+    if (!result) {
+      if (NoneElement.raiseWhenNotFound) {
+        const { ElementNotFoundError } = await import("../errors");
+        throw new ElementNotFoundError(direction);
+      }
+      return new NoneElement(direction, { locator, index });
+    }
+    return result;
+  }
+
+  private async _getNodeAtLocation(x: number, y: number, seen: Set<number>): Promise<Element | null> {
+    try {
+      const { nodeId } = await this._session.send<{ nodeId: number }>("DOM.getNodeForLocation", {
+        x,
+        y,
+      });
+      if (nodeId <= 0) return null;
+      const { node } = await this._session.send<{ node: { backendNodeId: number } }>("DOM.describeNode", { nodeId });
+      if (seen.has(node.backendNodeId)) return null;
+      return this._createElement(nodeId);
+    } catch {
+      return null;
+    }
   }
 }
 
@@ -1782,7 +2068,6 @@ export class Element {
  * 主要处理 DrissionPage 生成的文本搜索和属性搜索 XPath
  */
 function _cheerioXPathFallback($: any, xpath: string): any[] {
-  // 文本包含: //*/text()[contains(., "xxx")]/..
   let m = xpath.match(/\/\/\*\/text\(\)\[contains\(\.,\s*"([^"]+)"\)\]\/\.\./);
   if (m) {
     return $("*").toArray().filter((node: any) => {
@@ -1791,7 +2076,6 @@ function _cheerioXPathFallback($: any, xpath: string): any[] {
     });
   }
 
-  // 精确文本: //*[text()="xxx"]
   m = xpath.match(/\/\/\*\[text\(\)="([^"]+)"\]/);
   if (m) {
     return $("*").toArray().filter((node: any) => {
@@ -1800,29 +2084,145 @@ function _cheerioXPathFallback($: any, xpath: string): any[] {
     });
   }
 
-  // 属性精确: //*[@attr="val"]
   m = xpath.match(/\/\/\*\[@(\w+)="([^"]+)"\]/);
   if (m) {
     return $(`[${m[1]}="${m[2]}"]`).toArray();
   }
 
-  // 属性包含: //*[contains(@attr,"val")]
   m = xpath.match(/\/\/\*\[contains\(@(\w+),"([^"]+)"\)\]/);
   if (m) {
     return $(`[${m[1]}*="${m[2]}"]`).toArray();
   }
 
-  // tag name: //*[name()="div"]
   m = xpath.match(/\/\/\*\[name\(\)="(\w+)"\]/);
   if (m) {
     return $(m[1]).toArray();
   }
 
-  // 通配符
   if (xpath === "//*") {
     return $("*").toArray();
   }
 
-  // 无法解析的 XPath，返回空
   return [];
+}
+
+function _scanLine(start: number, end: number): number[] {
+  const points: number[] = [];
+  const mid = (start + end) / 2;
+  points.push(Math.round(mid));
+  const step = Math.max(1, Math.floor((end - start) / 5));
+  for (let p = Math.round(start); p < Math.round(end); p += step) {
+    points.push(p);
+  }
+  return points;
+}
+
+async function _filterByLocator(elements: Element[], locator: string): Promise<Element[]> {
+  const { parseLocator } = await import("./locator");
+  const parsed = parseLocator(locator);
+  const result: Element[] = [];
+  for (const ele of elements) {
+    try {
+      if (parsed.type === "css") {
+        const matches = await ele.run_js(`return this.matches(${JSON.stringify(parsed.value)})`);
+        if (matches) result.push(ele);
+      } else if (parsed.type === "xpath") {
+        const tag = await ele.tag_name();
+        if (tag) result.push(ele);
+      } else {
+        result.push(ele);
+      }
+    } catch { }
+  }
+  return result;
+}
+
+const KEY_MAP: Record<string, { key: string; code: string; keyCode: number }> = {
+  "Enter": { key: "Enter", code: "Enter", keyCode: 13 },
+  "Tab": { key: "Tab", code: "Tab", keyCode: 9 },
+  "Escape": { key: "Escape", code: "Escape", keyCode: 27 },
+  "Backspace": { key: "Backspace", code: "Backspace", keyCode: 8 },
+  "Delete": { key: "Delete", code: "Delete", keyCode: 46 },
+  "ArrowUp": { key: "ArrowUp", code: "ArrowUp", keyCode: 38 },
+  "ArrowDown": { key: "ArrowDown", code: "ArrowDown", keyCode: 40 },
+  "ArrowLeft": { key: "ArrowLeft", code: "ArrowLeft", keyCode: 37 },
+  "ArrowRight": { key: "ArrowRight", code: "ArrowRight", keyCode: 39 },
+  "Home": { key: "Home", code: "Home", keyCode: 36 },
+  "End": { key: "End", code: "End", keyCode: 35 },
+  "PageUp": { key: "PageUp", code: "PageUp", keyCode: 33 },
+  "PageDown": { key: "PageDown", code: "PageDown", keyCode: 34 },
+  "Space": { key: " ", code: "Space", keyCode: 32 },
+  "Control": { key: "Control", code: "ControlLeft", keyCode: 17 },
+  "Alt": { key: "Alt", code: "AltLeft", keyCode: 18 },
+  "Shift": { key: "Shift", code: "ShiftLeft", keyCode: 16 },
+  "Meta": { key: "Meta", code: "MetaLeft", keyCode: 91 },
+  "F1": { key: "F1", code: "F1", keyCode: 112 },
+  "F2": { key: "F2", code: "F2", keyCode: 113 },
+  "F3": { key: "F3", code: "F3", keyCode: 114 },
+  "F4": { key: "F4", code: "F4", keyCode: 115 },
+  "F5": { key: "F5", code: "F5", keyCode: 116 },
+  "F6": { key: "F6", code: "F6", keyCode: 117 },
+  "F7": { key: "F7", code: "F7", keyCode: 118 },
+  "F8": { key: "F8", code: "F8", keyCode: 119 },
+  "F9": { key: "F9", code: "F9", keyCode: 120 },
+  "F10": { key: "F10", code: "F10", keyCode: 121 },
+  "F11": { key: "F11", code: "F11", keyCode: 122 },
+  "F12": { key: "F12", code: "F12", keyCode: 123 },
+};
+
+function _getKeyDefinition(key: string): { key: string; code: string; keyCode: number } {
+  if (KEY_MAP[key]) return KEY_MAP[key];
+  if (key.length === 1) {
+    const upper = key.toUpperCase();
+    return { key, code: `Key${upper}`, keyCode: upper.charCodeAt(0) };
+  }
+  return { key, code: key, keyCode: 0 };
+}
+
+function _charToKeyCode(char: string): number {
+  const code = char.charCodeAt(0);
+  if (code >= 65 && code <= 90) return code;
+  if (code >= 97 && code <= 122) return code - 32;
+  if (code >= 48 && code <= 57) return code;
+  switch (char) {
+    case ' ': return 32;
+    case '\n': return 13;
+    case '\t': return 9;
+    case '.': return 190;
+    case ',': return 188;
+    case '/': return 191;
+    case '\\': return 220;
+    case '[': return 219;
+    case ']': return 221;
+    case '-': return 189;
+    case '=': return 187;
+    case ';': return 186;
+    case "'": return 222;
+    case '`': return 192;
+    default: return code;
+  }
+}
+
+function _charToCode(char: string): string {
+  const code = char.charCodeAt(0);
+  if (code >= 65 && code <= 90) return `Key${char}`;
+  if (code >= 97 && code <= 122) return `Key${char.toUpperCase()}`;
+  if (code >= 48 && code <= 57) return `Digit${char}`;
+  switch (char) {
+    case ' ': return 'Space';
+    case '\n': return 'Enter';
+    case '\t': return 'Tab';
+    case '.': return 'Period';
+    case ',': return 'Comma';
+    case '/': return 'Slash';
+    case '\\': return 'Backslash';
+    case '[': return 'BracketLeft';
+    case ']': return 'BracketRight';
+    case '-': return 'Minus';
+    case '=': return 'Equal';
+    case ';': return 'Semicolon';
+    case "'": return 'Quote';
+    case '`': return 'Backquote';
+    default: return `Key${char}`;
+  }
 }

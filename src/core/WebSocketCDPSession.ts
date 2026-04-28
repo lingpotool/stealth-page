@@ -1,14 +1,21 @@
 import WebSocket from "ws";
 import { CDPSession, CDPEventHandler } from "./CDPSession";
 
+export interface CdpErrorInfo {
+  error: string;
+  type: string;
+  method?: string;
+  args?: Record<string, any>;
+  data?: any;
+}
+
 interface PendingRequest {
   resolve: (value: any) => void;
   reject: (reason?: any) => void;
 }
 
-/**
- * 子会话，用于 flatten 模式下与特定 target 通信
- */
+const DEFAULT_CDP_TIMEOUT = 10;
+
 class ChildCDPSession implements CDPSession {
   private readonly parent: WebSocketCDPSession;
   private readonly sessionId: string;
@@ -18,8 +25,12 @@ class ChildCDPSession implements CDPSession {
     this.sessionId = sessionId;
   }
 
-  async send<T = any>(method: string, params?: Record<string, any>): Promise<T> {
-    return this.parent.sendToSession<T>(this.sessionId, method, params);
+  async send<T = any>(method: string, params?: Record<string, any>, timeout?: number): Promise<T> {
+    return this.parent.sendToSession<T>(this.sessionId, method, params, timeout);
+  }
+
+  async run<T = any>(method: string, params?: Record<string, any>, _ignore?: any[]): Promise<T> {
+    return this.parent.runInSession<T>(this.sessionId, method, params, _ignore);
   }
 
   on(event: string, handler: CDPEventHandler): void {
@@ -39,7 +50,6 @@ class ChildCDPSession implements CDPSession {
   }
 
   close(): void {
-    // 子会话不直接关闭 WebSocket
   }
 
   createChildSession(sessionId: string): CDPSession {
@@ -47,22 +57,32 @@ class ChildCDPSession implements CDPSession {
   }
 }
 
-/**
- * 通过 WebSocket 实现的 CDP 会话，用于连接 Chrome DevTools 协议。
- */
 export class WebSocketCDPSession implements CDPSession {
   private readonly ws: WebSocket;
   private nextId = 0;
   private readonly pending = new Map<number, PendingRequest>();
   private readonly eventHandlers = new Map<string, Set<CDPEventHandler>>();
-  // 用于 flatten 模式的子会话事件处理
   private readonly sessionEventHandlers = new Map<string, Map<string, Set<CDPEventHandler>>>();
+  private readonly immediateEventHandlers = new Map<string, CDPEventHandler>();
+  private readonly immediateEventQueue: Array<{ method: string; params: any }> = [];
+  owner?: any;
+  alert_flag: boolean = false;
 
   private constructor(ws: WebSocket) {
     this.ws = ws;
     this.ws.on("message", this.handleMessage);
     this.ws.on("error", this.handleError);
     this.ws.on("close", this.handleClose);
+    this._initAlertListeners();
+  }
+
+  private _initAlertListeners(): void {
+    this.on("Page.javascriptDialogOpening", () => {
+      this.alert_flag = true;
+    });
+    this.on("Page.javascriptDialogClosed", () => {
+      this.alert_flag = false;
+    });
   }
 
   static async connect(url: string): Promise<WebSocketCDPSession> {
@@ -83,29 +103,25 @@ export class WebSocketCDPSession implements CDPSession {
     });
   }
 
-  async send<T = any>(method: string, params?: Record<string, any>): Promise<T> {
-    const id = ++this.nextId;
-    const message = JSON.stringify({ id, method, params });
-
-    return new Promise<T>((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
-      this.ws.send(message, (err?: Error) => {
-        if (err) {
-          this.pending.delete(id);
-          reject(err);
-        }
-      });
-    });
+  set_callback(event: string, callback: CDPEventHandler, immediate: boolean = false): void {
+    if (immediate) {
+      this.immediateEventHandlers.set(event, callback);
+    } else {
+      this.on(event, callback);
+    }
   }
 
-  /**
-   * 向特定 session 发送命令（flatten 模式）
-   */
-  async sendToSession<T = any>(sessionId: string, method: string, params?: Record<string, any>): Promise<T> {
-    const id = ++this.nextId;
-    const message = JSON.stringify({ id, method, params, sessionId });
+  async send<T = any>(method: string, params?: Record<string, any>, timeout?: number): Promise<T> {
+    if (this.alert_flag && (method.startsWith("Input.") || method.startsWith("Runtime."))) {
+      const errorInfo: CdpErrorInfo = { error: "alert exists.", type: "alert_exists", method, args: params };
+      throw errorInfo;
+    }
 
-    return new Promise<T>((resolve, reject) => {
+    const id = ++this.nextId;
+    const message = JSON.stringify({ id, method, params });
+    const timeoutMs = (timeout !== undefined ? timeout : DEFAULT_CDP_TIMEOUT) * 1000;
+
+    const sendPromise = new Promise<T>((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
       this.ws.send(message, (err?: Error) => {
         if (err) {
@@ -114,6 +130,105 @@ export class WebSocketCDPSession implements CDPSession {
         }
       });
     });
+
+    const timeoutPromise = new Promise<T>((_resolve, reject) => {
+      setTimeout(() => {
+        if (this.pending.has(id)) {
+          this.pending.delete(id);
+          const errorInfo: CdpErrorInfo = { error: "timeout", type: "timeout", method, args: params };
+          reject(errorInfo);
+        }
+      }, timeoutMs);
+    });
+
+    return Promise.race([sendPromise, timeoutPromise]);
+  }
+
+  async sendToSession<T = any>(sessionId: string, method: string, params?: Record<string, any>, timeout?: number): Promise<T> {
+    if (this.alert_flag && (method.startsWith("Input.") || method.startsWith("Runtime."))) {
+      const errorInfo: CdpErrorInfo = { error: "alert exists.", type: "alert_exists", method, args: params };
+      throw errorInfo;
+    }
+
+    const id = ++this.nextId;
+    const message = JSON.stringify({ id, method, params, sessionId });
+    const timeoutMs = (timeout !== undefined ? timeout : DEFAULT_CDP_TIMEOUT) * 1000;
+
+    const sendPromise = new Promise<T>((resolve, reject) => {
+      this.pending.set(id, { resolve, reject });
+      this.ws.send(message, (err?: Error) => {
+        if (err) {
+          this.pending.delete(id);
+          reject(err);
+        }
+      });
+    });
+
+    const timeoutPromise = new Promise<T>((_resolve, reject) => {
+      setTimeout(() => {
+        if (this.pending.has(id)) {
+          this.pending.delete(id);
+          const errorInfo: CdpErrorInfo = { error: "timeout", type: "timeout", method, args: params };
+          reject(errorInfo);
+        }
+      }, timeoutMs);
+    });
+
+    return Promise.race([sendPromise, timeoutPromise]);
+  }
+
+  async run<T = any>(method: string, params?: Record<string, any>, _ignore: any[] = []): Promise<T> {
+    try {
+      return await this.send<T>(method, params);
+    } catch (e: any) {
+      if (this._shouldIgnore(e, _ignore)) {
+        return undefined as T;
+      }
+      throw e;
+    }
+  }
+
+  async runInSession<T = any>(sessionId: string, method: string, params?: Record<string, any>, _ignore: any[] = []): Promise<T> {
+    try {
+      return await this.sendToSession<T>(sessionId, method, params);
+    } catch (e: any) {
+      if (this._shouldIgnore(e, _ignore)) {
+        return undefined as T;
+      }
+      throw e;
+    }
+  }
+
+  private _shouldIgnore(error: any, _ignore: any[]): boolean {
+    if (!_ignore || _ignore.length === 0) return false;
+    const errorType = error?.type || '';
+    const errorMsg = error?.error || (error?.message || '');
+    for (const ignoreClass of _ignore) {
+      if (typeof ignoreClass === 'function') {
+        const className = ignoreClass.name;
+        if (error instanceof ignoreClass) return true;
+        if (errorType === 'alert_exists' && className === 'AlertExistsError') return true;
+        if (errorType === 'timeout' && className === 'WaitTimeoutError') return true;
+        if (errorType === 'cdp_error') {
+          const errorMappings: Record<string, string> = {
+            'Cannot find context': 'ContextLostError',
+            'Could not find node': 'ElementLostError',
+            'connection disconnected': 'PageDisconnectedError',
+            'alert exists': 'AlertExistsError',
+            'Node does not have layout': 'NoRectError',
+            'Cannot navigate to invalid URL': 'IncorrectURLError',
+            'Frame corresponds to opaque origin': 'StorageError',
+            'Sanitizing cookie failed': 'CookieFormatError',
+            'Given expression does not evaluate to a function': 'JavaScriptError',
+          };
+          for (const [pattern, mappedClass] of Object.entries(errorMappings)) {
+            if (errorMsg.includes(pattern) && className === mappedClass) return true;
+          }
+          if (className === 'CDPError') return true;
+        }
+      }
+    }
+    return false;
   }
 
   on(event: string, handler: CDPEventHandler): void {
@@ -144,9 +259,6 @@ export class WebSocketCDPSession implements CDPSession {
     }
   }
 
-  /**
-   * 为特定 session 注册事件处理器
-   */
   onSession(sessionId: string, event: string, handler: CDPEventHandler): void {
     let sessionMap = this.sessionEventHandlers.get(sessionId);
     if (!sessionMap) {
@@ -161,9 +273,6 @@ export class WebSocketCDPSession implements CDPSession {
     set.add(handler);
   }
 
-  /**
-   * 移除特定 session 的事件处理器
-   */
   offSession(sessionId: string, event: string, handler: CDPEventHandler): void {
     const sessionMap = this.sessionEventHandlers.get(sessionId);
     if (!sessionMap) return;
@@ -178,9 +287,6 @@ export class WebSocketCDPSession implements CDPSession {
     }
   }
 
-  /**
-   * 创建子会话（用于 flatten 模式）
-   */
   createChildSession(sessionId: string): CDPSession {
     return new ChildCDPSession(this, sessionId);
   }
@@ -204,7 +310,12 @@ export class WebSocketCDPSession implements CDPSession {
       }
       this.pending.delete(msg.id);
       if (msg.error) {
-        pending.reject(new Error(msg.error.message || "CDP error"));
+        const errorInfo: CdpErrorInfo = {
+          error: msg.error.message || "CDP error",
+          type: "cdp_error",
+          data: msg.error,
+        };
+        pending.reject(errorInfo);
       } else {
         pending.resolve(msg.result);
       }
@@ -212,7 +323,15 @@ export class WebSocketCDPSession implements CDPSession {
     }
 
     if (msg.method) {
-      // 处理带 sessionId 的事件（flatten 模式）
+      const immediateHandler = this.immediateEventHandlers.get(msg.method);
+      if (immediateHandler) {
+        try {
+          immediateHandler(msg.params);
+        } catch {
+        }
+        this.immediateEventQueue.push({ method: msg.method, params: msg.params });
+      }
+
       if (msg.sessionId) {
         const sessionMap = this.sessionEventHandlers.get(msg.sessionId);
         if (sessionMap) {
@@ -228,7 +347,6 @@ export class WebSocketCDPSession implements CDPSession {
         }
       }
       
-      // 也触发全局事件处理器
       const handlers = this.eventHandlers.get(msg.method);
       if (handlers) {
         for (const handler of handlers) {
@@ -249,10 +367,78 @@ export class WebSocketCDPSession implements CDPSession {
   };
 
   private handleClose = () => {
+    if (this.owner && typeof this.owner._on_disconnect === 'function') {
+      try {
+        this.owner._on_disconnect();
+      } catch {
+      }
+    }
     const err = new Error("CDP WebSocket closed");
     for (const [id, pending] of this.pending) {
       pending.reject(err);
       this.pending.delete(id);
     }
   };
+}
+
+export class BrowserDriver {
+  private static readonly BROWSERS = new Map<string, BrowserDriver>();
+  readonly id: string;
+  readonly address: string;
+  owner?: any;
+  readonly session: WebSocketCDPSession;
+
+  private constructor(id: string, address: string, session: WebSocketCDPSession) {
+    this.id = id;
+    this.address = address;
+    this.session = session;
+  }
+
+  static async get(id: string, address: string, owner?: any): Promise<BrowserDriver> {
+    const existing = BrowserDriver.BROWSERS.get(id);
+    if (existing) {
+      if (owner !== undefined) {
+        existing.owner = owner;
+        existing.session.owner = owner;
+      }
+      return existing;
+    }
+
+    const session = await WebSocketCDPSession.connect(address);
+    const driver = new BrowserDriver(id, address, session);
+    if (owner !== undefined) {
+      driver.owner = owner;
+      session.owner = owner;
+    }
+    BrowserDriver.BROWSERS.set(id, driver);
+    return driver;
+  }
+
+  static has(id: string): boolean {
+    return BrowserDriver.BROWSERS.has(id);
+  }
+
+  static remove(id: string): void {
+    const driver = BrowserDriver.BROWSERS.get(id);
+    if (driver) {
+      driver.session.close();
+      BrowserDriver.BROWSERS.delete(id);
+    }
+  }
+
+  async send<T = any>(method: string, params?: Record<string, any>, timeout?: number): Promise<T> {
+    return this.session.send<T>(method, params, timeout);
+  }
+
+  async run<T = any>(method: string, params?: Record<string, any>, _ignore: any[] = []): Promise<T> {
+    return this.session.run<T>(method, params, _ignore);
+  }
+
+  set_callback(event: string, callback: CDPEventHandler, immediate: boolean = false): void {
+    this.session.set_callback(event, callback, immediate);
+  }
+
+  close(): void {
+    BrowserDriver.remove(this.id);
+  }
 }

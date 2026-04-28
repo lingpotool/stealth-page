@@ -1,6 +1,6 @@
 export { ElementScroller, ScrollableElement } from "./ElementScroller";
 export { ElementClicker, ClickableElement, ClickableElementWithPage } from "./ElementClicker";
-export { FrameScroller, ScrollableFrame } from "./FrameScroller";
+export { FrameScroller } from "./FrameScroller";
 export { ElementWaiter, WaitableElement } from "./ElementWaiter";
 export { ElementSetter, SettableElement } from "./ElementSetter";
 export { ElementRect, RectableElement } from "./ElementRect";

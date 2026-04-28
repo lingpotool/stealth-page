@@ -10,9 +10,6 @@ export interface WaitableElement {
   get_rect(): Promise<{ x: number; y: number; width: number; height: number }>;
 }
 
-/**
- * 元素等待器，对应 DrissionPage 的 ElementWaiter
- */
 export class ElementWaiter {
   private readonly _ele: WaitableElement;
   private readonly _defaultTimeout: number;
@@ -22,9 +19,6 @@ export class ElementWaiter {
     this._defaultTimeout = defaultTimeout;
   }
 
-  /**
-   * 等待若干秒
-   */
   async __call__(second: number, scope?: number): Promise<WaitableElement> {
     const ms = scope !== undefined
       ? (second + Math.random() * (scope - second)) * 1000
@@ -33,129 +27,36 @@ export class ElementWaiter {
     return this._ele;
   }
 
-  /**
-   * 等待元素从 DOM 删除
-   */
   async deleted(timeout?: number): Promise<WaitableElement | false> {
-    const timeoutMs = timeout ?? this._defaultTimeout;
-    const deadline = Date.now() + timeoutMs;
-
-    while (Date.now() < deadline) {
-      try {
-        await this._ele.getObjectId();
-        await new Promise(resolve => setTimeout(resolve, 100));
-      } catch {
-        return this._ele;
-      }
-    }
-    return false;
+    return this._waitState('is_alive', false, timeout);
   }
 
-  /**
-   * 等待元素显示
-   */
   async displayed(timeout?: number): Promise<WaitableElement | false> {
-    const timeoutMs = timeout ?? this._defaultTimeout;
-    const deadline = Date.now() + timeoutMs;
-
-    while (Date.now() < deadline) {
-      try {
-        const displayed = await this._ele.is_displayed();
-        if (displayed) return this._ele;
-      } catch {
-        // 元素可能不存在
-      }
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-    return false;
+    return this._waitState('is_displayed', true, timeout);
   }
 
-  /**
-   * 等待元素隐藏
-   */
   async hidden(timeout?: number): Promise<WaitableElement | false> {
-    const timeoutMs = timeout ?? this._defaultTimeout;
-    const deadline = Date.now() + timeoutMs;
-
-    while (Date.now() < deadline) {
-      try {
-        const displayed = await this._ele.is_displayed();
-        if (!displayed) return this._ele;
-      } catch {
-        return this._ele; // 元素不存在也算隐藏
-      }
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-    return false;
+    return this._waitState('is_displayed', false, timeout);
   }
 
-  /**
-   * 等待元素被遮盖
-   */
   async covered(timeout?: number): Promise<WaitableElement | false> {
-    const timeoutMs = timeout ?? this._defaultTimeout;
-    const deadline = Date.now() + timeoutMs;
-
-    while (Date.now() < deadline) {
-      try {
-        if (this._ele.is_covered) {
-          const result = await this._ele.is_covered();
-          if (result !== false) return this._ele;
-        }
-      } catch {
-        // 元素可能不存在
-      }
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-    return false;
+    const result = await this._waitState('is_covered', true, timeout);
+    return result;
   }
 
-  /**
-   * 等待元素不被遮盖
-   */
   async not_covered(timeout?: number): Promise<WaitableElement | false> {
-    const timeoutMs = timeout ?? this._defaultTimeout;
-    const deadline = Date.now() + timeoutMs;
-
-    while (Date.now() < deadline) {
-      try {
-        if (this._ele.is_covered) {
-          const result = await this._ele.is_covered();
-          if (result === false) return this._ele;
-        } else {
-          return this._ele; // 没有 is_covered 方法，假设不被遮盖
-        }
-      } catch {
-        // 元素可能不存在
-      }
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-    return false;
+    return this._waitState('is_covered', false, timeout);
   }
 
-  /**
-   * 等待元素可用
-   */
   async enabled(timeout?: number): Promise<WaitableElement | false> {
-    const timeoutMs = timeout ?? this._defaultTimeout;
-    const deadline = Date.now() + timeoutMs;
-
-    while (Date.now() < deadline) {
-      try {
-        const enabled = await this._ele.is_enabled();
-        if (enabled) return this._ele;
-      } catch {
-        // 元素可能不存在
-      }
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-    return false;
+    return this._waitState('is_enabled', true, timeout);
   }
 
-  /**
-   * 等待元素不可用
-   */
   async disabled(timeout?: number): Promise<WaitableElement | false> {
+    return this._waitState('is_enabled', false, timeout);
+  }
+
+  async disabled_or_deleted(timeout?: number): Promise<WaitableElement | false> {
     const timeoutMs = timeout ?? this._defaultTimeout;
     const deadline = Date.now() + timeoutMs;
 
@@ -166,103 +67,162 @@ export class ElementWaiter {
       } catch {
         return this._ele;
       }
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 50));
     }
     return false;
   }
 
-  /**
-   * 等待元素不可用或从 DOM 删除
-   */
-  async disabled_or_deleted(timeout?: number): Promise<boolean> {
+  async clickable(waitMoved: boolean = true, timeout?: number): Promise<WaitableElement | false> {
     const timeoutMs = timeout ?? this._defaultTimeout;
-    const deadline = Date.now() + timeoutMs;
-
-    while (Date.now() < deadline) {
-      try {
-        await this._ele.getObjectId();
-        const enabled = await this._ele.is_enabled();
-        if (!enabled) return true;
-      } catch {
-        return true; // 元素已删除
-      }
-      await new Promise(resolve => setTimeout(resolve, 100));
+    const t1 = Date.now();
+    const result = await this._waitState('is_clickable', true, timeoutMs);
+    if (waitMoved && result) {
+      const remaining = timeoutMs - (Date.now() - t1);
+      return this.stop_moving(remaining > 0 ? remaining : 100);
     }
-    return false;
+    return result;
   }
 
-  /**
-   * 等待元素停止移动
-   */
+  async has_rect(timeout?: number): Promise<WaitableElement | false> {
+    return this._waitState('has_rect', true, timeout);
+  }
+
   async stop_moving(timeout?: number, gap: number = 100): Promise<WaitableElement | false> {
-    const timeoutMs = timeout ?? this._defaultTimeout;
+    const timeoutMs = (timeout ?? this._defaultTimeout);
+    if (timeoutMs <= 0) {
+      return this._ele;
+    }
     const deadline = Date.now() + timeoutMs;
 
-    let lastRect: { x: number; y: number } | null = null;
+    let lastRect: { x: number; y: number; width: number; height: number } | null = null;
 
     while (Date.now() < deadline) {
       try {
         const rect = await this._ele.get_rect();
-        if (lastRect && rect.x === lastRect.x && rect.y === lastRect.y) {
+        if (lastRect && rect.x === lastRect.x && rect.y === lastRect.y &&
+            rect.width === lastRect.width && rect.height === lastRect.height) {
           return this._ele;
         }
-        lastRect = { x: rect.x, y: rect.y };
+        lastRect = rect;
       } catch {
-        // 元素可能不存在
+        // element may not exist yet
       }
       await new Promise(resolve => setTimeout(resolve, gap));
     }
     return false;
   }
 
-  /**
-   * 等待元素可点击（显示、可用、有大小）
-   */
-  async clickable(waitMoved: boolean = true, timeout?: number): Promise<WaitableElement | false> {
+  async download_begin(timeout?: number, cancelIt: boolean = false): Promise<any | false> {
     const timeoutMs = timeout ?? this._defaultTimeout;
-    const deadline = Date.now() + timeoutMs;
+    const session = this._ele.session;
 
-    while (Date.now() < deadline) {
-      try {
-        const displayed = await this._ele.is_displayed();
-        const enabled = await this._ele.is_enabled();
-        const rect = await this._ele.get_rect();
-        const hasSize = rect.width > 0 && rect.height > 0;
+    return new Promise((resolve) => {
+      let resolved = false;
 
-        if (displayed && enabled && hasSize) {
-          if (waitMoved) {
-            const stopped = await this.stop_moving(Math.min(1000, deadline - Date.now()));
-            if (stopped) return this._ele;
-          } else {
-            return this._ele;
+      const handler = (params: any) => {
+        if (!resolved) {
+          resolved = true;
+          cleanup();
+
+          if (cancelIt) {
+            session.send("Browser.cancelDownload", { guid: params.guid }).catch(() => {});
           }
+
+          resolve(params);
         }
-      } catch {
-        // 元素可能不存在
-      }
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-    return false;
+      };
+
+      const cleanup = () => {
+        clearTimeout(timer);
+        session.off("Browser.downloadWillBegin", handler);
+      };
+
+      const timer = setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          cleanup();
+          resolve(false);
+        }
+      }, timeoutMs);
+
+      session.on("Browser.downloadWillBegin", handler);
+    });
   }
 
-  /**
-   * 等待元素有大小和位置
-   */
-  async has_rect(timeout?: number): Promise<WaitableElement | false> {
+  async upload_paths_inputted(timeout?: number): Promise<boolean> {
     const timeoutMs = timeout ?? this._defaultTimeout;
     const deadline = Date.now() + timeoutMs;
 
     while (Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    return true;
+  }
+
+  async state(stateName: string, mode: boolean = true, timeout?: number): Promise<WaitableElement | false> {
+    return this._waitState(stateName, mode, timeout);
+  }
+
+  private async _waitState(attr: string, mode: boolean, timeout?: number): Promise<WaitableElement | false> {
+    const timeoutMs = timeout ?? this._defaultTimeout;
+    const deadline = Date.now() + timeoutMs;
+
+    const check = async (): Promise<boolean> => {
       try {
-        const rect = await this._ele.get_rect();
-        if (rect.width > 0 && rect.height > 0) {
-          return this._ele;
+        switch (attr) {
+          case 'is_alive': {
+            await this._ele.getObjectId();
+            return true;
+          }
+          case 'is_displayed': {
+            const displayed = await this._ele.is_displayed();
+            return displayed;
+          }
+          case 'is_enabled': {
+            const enabled = await this._ele.is_enabled();
+            return enabled;
+          }
+          case 'is_covered': {
+            if (this._ele.is_covered) {
+              const result = await this._ele.is_covered();
+              return result !== false;
+            }
+            return false;
+          }
+          case 'is_clickable': {
+            const displayed = await this._ele.is_displayed();
+            const enabled = await this._ele.is_enabled();
+            const rect = await this._ele.get_rect();
+            return displayed && enabled && rect.width > 0 && rect.height > 0;
+          }
+          case 'has_rect': {
+            const rect = await this._ele.get_rect();
+            return rect.width > 0 && rect.height > 0;
+          }
+          default:
+            return false;
         }
       } catch {
-        // 元素可能不存在
+        if (attr === 'is_alive') return false;
+        if (attr === 'is_displayed') return false;
+        if (attr === 'is_enabled') return false;
+        return false;
       }
-      await new Promise(resolve => setTimeout(resolve, 100));
+    };
+
+    const initial = await check();
+    if ((initial && mode) || (!initial && !mode)) {
+      return this._ele;
     }
+
+    while (Date.now() < deadline) {
+      const result = await check();
+      if ((result && mode) || (!result && !mode)) {
+        return this._ele;
+      }
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+
     return false;
   }
 }

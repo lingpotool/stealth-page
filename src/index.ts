@@ -7,9 +7,18 @@ export * from "./core/SessionElement";
 export * from "./core/Keys";
 export * from "./core/locator";
 export * from "./core/NoneElement";
+export * from "./core/By";
+export * from "./core/Settings";
+export * from "./core/Texts";
+export * from "./core/tools";
+export * from "./core/web";
+export * from "./core/cookies";
+export * from "./core/OptionsManager";
+export * from "./core/PortFinder";
 export * from "./errors";
 
 export * from "./chromium/Chromium";
+export * from "./pages/ChromiumBase";
 export * from "./pages/ChromiumPage";
 export * from "./pages/ChromiumTab";
 export * from "./pages/MixTab";
@@ -24,7 +33,6 @@ export * from "./pages/WebPage";
 export * from "./config/ChromiumOptions";
 export * from "./config/SessionOptions";
 
-// Units - DrissionPage 风格的操作类
 export * from "./units/ElementScroller";
 export * from "./units/ElementClicker";
 export * from "./units/ElementWaiter";
@@ -42,16 +50,20 @@ export * from "./units/WindowSetter";
 export * from "./units/Pseudo";
 export * from "./units/FrameStates";
 export * from "./units/ShadowRootStates";
+export * from "./units/FrameScroller";
+export * from "./units/FrameRect";
+export * from "./units/Listener";
+export * from "./units/Actions";
+export * from "./units/Alert";
+export * from "./units/Timeout";
+export * from "./units/TabDownloadSettings";
 
-// Session 相关
 export * from "./units/SessionPageSetter";
 
-// Browser 相关
 export * from "./units/BrowserSetter";
 export * from "./units/BrowserCookiesSetter";
 export * from "./units/BrowserWaiter";
 export * from "./units/BrowserStates";
 
-// 加载和滚动设置
 export * from "./units/LoadMode";
 export * from "./units/PageScrollSetter";

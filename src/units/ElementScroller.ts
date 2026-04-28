@@ -5,10 +5,6 @@ export interface ScrollableElement {
   getObjectId(): Promise<string>;
 }
 
-/**
- * 元素滚动器，对应 DrissionPage 的 ElementScroller
- * 所有方法返回元素本身以支持链式调用
- */
 export class ElementScroller {
   private readonly _ele: ScrollableElement;
   private _waitComplete: boolean = false;
@@ -17,23 +13,14 @@ export class ElementScroller {
     this._ele = ele;
   }
 
-  /**
-   * 设置是否等待滚动完成
-   */
   set_wait_complete(on: boolean): void {
     this._waitComplete = on;
   }
 
-  /**
-   * 向下滚动若干像素
-   */
   async __call__(pixel: number = 300): Promise<ScrollableElement> {
     return this.down(pixel);
   }
 
-  /**
-   * 滚动到顶部
-   */
   async to_top(): Promise<ScrollableElement> {
     const objectId = await this._ele.getObjectId();
     await this._ele.session.send("Runtime.callFunctionOn", {
@@ -44,9 +31,6 @@ export class ElementScroller {
     return this._ele;
   }
 
-  /**
-   * 滚动到底部
-   */
   async to_bottom(): Promise<ScrollableElement> {
     const objectId = await this._ele.getObjectId();
     await this._ele.session.send("Runtime.callFunctionOn", {
@@ -57,9 +41,6 @@ export class ElementScroller {
     return this._ele;
   }
 
-  /**
-   * 滚动到垂直中间位置
-   */
   async to_half(): Promise<ScrollableElement> {
     const objectId = await this._ele.getObjectId();
     await this._ele.session.send("Runtime.callFunctionOn", {
@@ -70,9 +51,6 @@ export class ElementScroller {
     return this._ele;
   }
 
-  /**
-   * 滚动到最右边
-   */
   async to_rightmost(): Promise<ScrollableElement> {
     const objectId = await this._ele.getObjectId();
     await this._ele.session.send("Runtime.callFunctionOn", {
@@ -83,9 +61,6 @@ export class ElementScroller {
     return this._ele;
   }
 
-  /**
-   * 滚动到最左边
-   */
   async to_leftmost(): Promise<ScrollableElement> {
     const objectId = await this._ele.getObjectId();
     await this._ele.session.send("Runtime.callFunctionOn", {
@@ -96,9 +71,6 @@ export class ElementScroller {
     return this._ele;
   }
 
-  /**
-   * 滚动到指定位置
-   */
   async to_location(x: number, y: number): Promise<ScrollableElement> {
     const objectId = await this._ele.getObjectId();
     await this._ele.session.send("Runtime.callFunctionOn", {
@@ -110,9 +82,6 @@ export class ElementScroller {
     return this._ele;
   }
 
-  /**
-   * 向上滚动
-   */
   async up(pixel: number = 300): Promise<ScrollableElement> {
     const objectId = await this._ele.getObjectId();
     await this._ele.session.send("Runtime.callFunctionOn", {
@@ -124,9 +93,6 @@ export class ElementScroller {
     return this._ele;
   }
 
-  /**
-   * 向下滚动
-   */
   async down(pixel: number = 300): Promise<ScrollableElement> {
     const objectId = await this._ele.getObjectId();
     await this._ele.session.send("Runtime.callFunctionOn", {
@@ -138,9 +104,6 @@ export class ElementScroller {
     return this._ele;
   }
 
-  /**
-   * 向左滚动
-   */
   async left(pixel: number = 300): Promise<ScrollableElement> {
     const objectId = await this._ele.getObjectId();
     await this._ele.session.send("Runtime.callFunctionOn", {
@@ -152,9 +115,6 @@ export class ElementScroller {
     return this._ele;
   }
 
-  /**
-   * 向右滚动
-   */
   async right(pixel: number = 300): Promise<ScrollableElement> {
     const objectId = await this._ele.getObjectId();
     await this._ele.session.send("Runtime.callFunctionOn", {
@@ -166,23 +126,21 @@ export class ElementScroller {
     return this._ele;
   }
 
-  /**
-   * 滚动页面直到元素可见
-   * @param center 是否尽量滚动到页面正中，为null时如果被遮挡，则滚动到页面正中
-   */
   async to_see(center: boolean | null = null): Promise<ScrollableElement> {
     const objectId = await this._ele.getObjectId();
-    
+
     if (center === null) {
-      // 先尝试 nearest，如果被遮挡则用 center
       await this._ele.session.send("Runtime.callFunctionOn", {
         objectId,
         functionDeclaration: `function() { 
-          this.scrollIntoView({ behavior: 'auto', block: 'nearest' }); 
+          if (this.scrollIntoViewIfNeeded) {
+            this.scrollIntoViewIfNeeded({ block: 'nearest' });
+          } else {
+            this.scrollIntoView({ behavior: 'auto', block: 'nearest' }); 
+          }
         }`,
       });
-      
-      // 检查是否被遮挡
+
       const { result } = await this._ele.session.send<{ result: { value: boolean } }>("Runtime.callFunctionOn", {
         objectId,
         functionDeclaration: `function() {
@@ -194,41 +152,63 @@ export class ElementScroller {
         }`,
         returnByValue: true,
       });
-      
+
       if (!result.value) {
-        // 被遮挡，滚动到中间
         await this._ele.session.send("Runtime.callFunctionOn", {
           objectId,
           functionDeclaration: `function() { 
-            this.scrollIntoView({ behavior: 'auto', block: 'center' }); 
+            if (this.scrollIntoViewIfNeeded) {
+              this.scrollIntoViewIfNeeded({ block: 'center' });
+            } else {
+              this.scrollIntoView({ behavior: 'auto', block: 'center' }); 
+            }
           }`,
         });
       }
     } else {
+      const block = center ? 'center' : 'nearest';
       await this._ele.session.send("Runtime.callFunctionOn", {
         objectId,
-        functionDeclaration: `function(c) { 
-          this.scrollIntoView({ behavior: 'auto', block: c ? 'center' : 'nearest' }); 
+        functionDeclaration: `function(b) { 
+          if (this.scrollIntoViewIfNeeded) {
+            this.scrollIntoViewIfNeeded({ block: b });
+          } else {
+            this.scrollIntoView({ behavior: 'auto', block: b }); 
+          }
         }`,
-        arguments: [{ value: center }],
+        arguments: [{ value: block }],
       });
     }
-    
+
     if (this._waitComplete) await this._waitScrolled();
     return this._ele;
   }
 
-  /**
-   * 元素尽量滚动到视口中间
-   */
   async to_center(): Promise<ScrollableElement> {
     return this.to_see(true);
   }
 
-  /**
-   * 等待滚动结束
-   */
-  private async _waitScrolled(): Promise<void> {
-    await new Promise(resolve => setTimeout(resolve, 100));
+  private async _waitScrolled(timeout: number = 1000): Promise<void> {
+    const deadline = Date.now() + timeout;
+    let lastScrollX = -1;
+    let lastScrollY = -1;
+
+    while (Date.now() < deadline) {
+      try {
+        const { result } = await this._ele.session.send("Runtime.evaluate", {
+          expression: "JSON.stringify({x: window.scrollX, y: window.scrollY})",
+          returnByValue: true,
+        });
+        const pos = JSON.parse(result.value || '{}');
+        if (pos.x === lastScrollX && pos.y === lastScrollY) {
+          return;
+        }
+        lastScrollX = pos.x;
+        lastScrollY = pos.y;
+      } catch {
+        return;
+      }
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
   }
 }

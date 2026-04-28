@@ -278,7 +278,7 @@ export class WebPage {
 
   async cookies(): Promise<any[]> {
     if (this._mode === "d") {
-      return this._chromiumPage.cookies;
+      return this._chromiumPage.cookies();
     }
     return this._sessionPage.cookies();
   }
@@ -331,18 +331,18 @@ export class WebPage {
     throw new Error("WebPage forward() is only available in driver mode.");
   }
 
-  get tabs_count(): number {
+  get tabs_count(): Promise<number> {
     if (this._mode === "d") {
       return this._chromiumPage.tabs_count;
     }
-    return 0;
+    return Promise.resolve(0);
   }
 
-  get tab_ids(): string[] {
+  get tab_ids(): Promise<string[]> {
     if (this._mode === "d") {
       return this._chromiumPage.tab_ids;
     }
-    return [];
+    return Promise.resolve([]);
   }
 
   async scroll_to(x: number, y: number): Promise<void> {
@@ -469,7 +469,7 @@ export class WebPage {
     }
     
     // 获取浏览器 cookies
-    const browserCookies = await this._chromiumPage.cookies;
+    const browserCookies = await this._chromiumPage.cookies();
     
     // 设置到 session
     await this._sessionPage.set_cookies(browserCookies.map((c: any) => ({

@@ -6,6 +6,8 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
@@ -45,8 +47,10 @@
     "ws": "^8.16.0"
   },
   "devDependencies": {
+    "@rollup/rollup-win32-x64-msvc": "^4.60.2",
     "@types/node": "^20.11.0",
     "@types/ws": "^8.5.10",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "vitest": "^3.2.4"
   }
 }

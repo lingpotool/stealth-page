@@ -1,5 +1,6 @@
 import { ChromiumPage } from "./ChromiumPage";
 import { Element } from "../core/Element";
+import { NoneElement } from "../core/NoneElement";
 
 export class ChromiumPageWaiter {
   private readonly _page: ChromiumPage;
@@ -8,9 +9,6 @@ export class ChromiumPageWaiter {
     this._page = page;
   }
 
-  /**
-   * 等待若干秒
-   */
   async wait(second: number, scope?: number): Promise<ChromiumPage> {
     const waitTime = scope !== undefined
       ? second + Math.random() * (scope - second)
@@ -19,25 +17,22 @@ export class ChromiumPageWaiter {
     return this._page;
   }
 
-  async ele(locator: string, timeoutMs?: number, intervalMs = 200): Promise<Element | null> {
+  async ele(locator: string, timeoutMs?: number, intervalMs = 200): Promise<Element | NoneElement> {
     const options = this._page.browser.options;
     const effectiveTimeout = timeoutMs != null ? timeoutMs : options.timeouts.base * 1000;
     const deadline = Date.now() + effectiveTimeout;
     while (true) {
       const el = await this._page.ele(locator);
-      if (el) {
+      if (!(el instanceof NoneElement)) {
         return el;
       }
       if (Date.now() > deadline) {
-        return null;
+        return el;
       }
       await new Promise((resolve) => setTimeout(resolve, intervalMs));
     }
   }
 
-  /**
-   * 等待多个元素加载到 DOM
-   */
   async eles_loaded(locators: string | string[], timeout?: number, anyOne: boolean = false): Promise<boolean> {
     const options = this._page.browser.options;
     const timeoutMs = (timeout ?? options.timeouts.base) * 1000;
@@ -68,9 +63,6 @@ export class ChromiumPageWaiter {
     return false;
   }
 
-  /**
-   * 等待 URL 变化（包含或不包含指定文本）
-   */
   async url_change(text?: string, exclude: boolean = false, timeout?: number): Promise<ChromiumPage | false> {
     const options = this._page.browser.options;
     const timeoutMs = (timeout ?? options.timeouts.base) * 1000;
@@ -79,29 +71,24 @@ export class ChromiumPageWaiter {
 
     while (Date.now() < deadline) {
       const currentUrl = await this._page.url();
-      
+
       if (text === undefined) {
-        // 没有指定文本，只要 URL 变化就返回
         if (currentUrl !== startUrl) {
           return this._page;
         }
       } else {
-        // 指定了文本，检查是否包含/不包含
         const contains = currentUrl.includes(text);
         if (exclude ? !contains : contains) {
           return this._page;
         }
       }
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 50));
     }
 
     return false;
   }
 
-  /**
-   * 等待标题变化（包含或不包含指定文本）
-   */
   async title_change(text?: string, exclude: boolean = false, timeout?: number): Promise<ChromiumPage | false> {
     const options = this._page.browser.options;
     const timeoutMs = (timeout ?? options.timeouts.base) * 1000;
@@ -110,7 +97,7 @@ export class ChromiumPageWaiter {
 
     while (Date.now() < deadline) {
       const currentTitle = await this._page.title();
-      
+
       if (text === undefined) {
         if (currentTitle !== startTitle) {
           return this._page;
@@ -122,15 +109,12 @@ export class ChromiumPageWaiter {
         }
       }
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 50));
     }
 
     return false;
   }
 
-  /**
-   * 等待页面开始加载
-   */
   async load_start(timeout?: number): Promise<boolean> {
     const options = this._page.browser.options;
     const timeoutMs = (timeout ?? options.timeouts.pageLoad) * 1000;
@@ -157,9 +141,6 @@ export class ChromiumPageWaiter {
     });
   }
 
-  /**
-   * 等待文档加载完成
-   */
   async doc_loaded(timeout?: number): Promise<boolean> {
     const options = this._page.browser.options;
     const timeoutMs = (timeout ?? options.timeouts.pageLoad) * 1000;
@@ -184,6 +165,52 @@ export class ChromiumPageWaiter {
 
       page.cdpSession.on("Page.domContentEventFired", handler);
     });
+  }
+
+  async js_ready(timeout?: number): Promise<boolean> {
+    const options = this._page.browser.options;
+    const timeoutMs = (timeout ?? options.timeouts.pageLoad) * 1000;
+    const deadline = Date.now() + timeoutMs;
+    const page = this._page["_page"];
+    if (!page) return false;
+
+    while (Date.now() < deadline) {
+      try {
+        const result = await page.cdpSession.send("Runtime.evaluate", {
+          expression: "document.readyState",
+          returnByValue: true,
+        });
+        if (result.result?.value === "complete" || result.result?.value === "interactive") {
+          return true;
+        }
+      } catch {
+        // ignore
+      }
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    return false;
+  }
+
+  async activated(timeout?: number): Promise<boolean> {
+    const options = this._page.browser.options;
+    const timeoutMs = (timeout ?? options.timeouts.base) * 1000;
+    const deadline = Date.now() + timeoutMs;
+    const page = this._page["_page"];
+    if (!page) return false;
+
+    while (Date.now() < deadline) {
+      try {
+        const targetId = page.tab_id;
+        const result = await page.cdpSession.send("Target.getTargetInfo", { targetId });
+        if (result.targetInfo?.isActive) {
+          return true;
+        }
+      } catch {
+        // ignore
+      }
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    return false;
   }
 
   async load(timeoutMs = 30000): Promise<boolean> {
@@ -211,9 +238,6 @@ export class ChromiumPageWaiter {
     });
   }
 
-  /**
-   * 等待新标签页出现
-   */
   async new_tab(timeout?: number): Promise<string | false> {
     const options = this._page.browser.options;
     const timeoutMs = (timeout ?? options.timeouts.base) * 1000;
@@ -286,18 +310,21 @@ export class ChromiumPageWaiter {
     return false;
   }
 
-  /**
-   * 等待上传文件路径输入完成
-   */
-  async upload_paths_inputted(): Promise<boolean> {
-    // 简化实现：等待一小段时间
-    await new Promise(resolve => setTimeout(resolve, 500));
-    return true;
+  async upload_paths_inputted(timeout?: number): Promise<boolean> {
+    const options = this._page.browser.options;
+    const timeoutMs = (timeout ?? options.timeouts.base) * 1000;
+    const deadline = Date.now() + timeoutMs;
+    const page = this._page["_page"];
+
+    while (Date.now() < deadline) {
+      if (!page || !(page as any)._upload_list || (page as any)._upload_list.length === 0) {
+        return true;
+      }
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    return false;
   }
 
-  /**
-   * 等待下载开始
-   */
   async download_begin(timeout?: number, cancelIt: boolean = false): Promise<any | false> {
     const options = this._page.browser.options;
     const timeoutMs = (timeout ?? options.timeouts.base) * 1000;
@@ -311,20 +338,20 @@ export class ChromiumPageWaiter {
         if (!resolved) {
           resolved = true;
           cleanup();
-          
+
           if (cancelIt) {
             page.cdpSession.send("Browser.cancelDownload", {
               guid: params.guid,
             }).catch(() => {});
           }
-          
+
           resolve(params);
         }
       };
 
       const cleanup = () => {
         clearTimeout(timer);
-        page.cdpSession.off("Page.downloadWillBegin", handler);
+        page.cdpSession.off("Browser.downloadWillBegin", handler);
       };
 
       const timer = setTimeout(() => {
@@ -335,30 +362,47 @@ export class ChromiumPageWaiter {
         }
       }, timeoutMs);
 
-      page.cdpSession.on("Page.downloadWillBegin", handler);
+      page.cdpSession.on("Browser.downloadWillBegin", handler);
     });
   }
 
-  /**
-   * 等待所有下载任务完成
-   */
   async downloads_done(timeout?: number, cancelIfTimeout: boolean = true): Promise<boolean> {
-    // 简化实现
     const timeoutMs = timeout ? timeout * 1000 : 60000;
-    await new Promise(resolve => setTimeout(resolve, Math.min(timeoutMs, 1000)));
-    return true;
+    const deadline = Date.now() + timeoutMs;
+    const browser = this._page.browser;
+    const dlMgr = browser.browser?._dl_mgr;
+
+    if (!dlMgr) {
+      await new Promise(resolve => setTimeout(resolve, Math.min(timeoutMs, 1000)));
+      return true;
+    }
+
+    const tabId = this._page["_page"]?.tab_id;
+
+    while (Date.now() < deadline) {
+      const missions = tabId ? dlMgr.get_tab_missions?.(tabId) : null;
+      if (!missions || missions.size === 0) {
+        return true;
+      }
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    if (cancelIfTimeout && tabId) {
+      const missions = dlMgr.get_tab_missions?.(tabId);
+      if (missions) {
+        for (const m of missions) {
+          m.state = 'canceled';
+        }
+      }
+    }
+
+    return false;
   }
 
-  /**
-   * 等待所有浏览器下载任务结束（别名）
-   */
   async all_downloads_done(timeout?: number, cancelIfTimeout: boolean = true): Promise<boolean> {
     return this.downloads_done(timeout, cancelIfTimeout);
   }
 
-  /**
-   * 等待弹窗出现
-   */
   async alert(timeout?: number): Promise<boolean> {
     const options = this._page.browser.options;
     const timeoutMs = (timeout ?? options.timeouts.base) * 1000;
@@ -385,37 +429,25 @@ export class ChromiumPageWaiter {
     });
   }
 
-  /**
-   * 等待弹窗关闭
-   */
-  async alert_closed(timeout?: number): Promise<ChromiumPage> {
+  async alert_closed(timeout?: number): Promise<ChromiumPage | false> {
     const options = this._page.browser.options;
     const timeoutMs = timeout !== undefined ? timeout * 1000 : Infinity;
     const page = this._page["_page"];
-    
+
     if (!page) return this._page;
 
-    return new Promise<ChromiumPage>((resolve) => {
-      let timer: NodeJS.Timeout | null = null;
-      
-      if (timeoutMs !== Infinity) {
-        timer = setTimeout(() => {
-          cleanup();
-          resolve(this._page);
-        }, timeoutMs);
-      }
+    const deadline = timeoutMs !== Infinity ? Date.now() + timeoutMs : Infinity;
 
-      const handler = () => {
-        cleanup();
-        resolve(this._page);
-      };
+    while (!(page as any)._has_alert) {
+      if (deadline !== Infinity && Date.now() >= deadline) return false;
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
 
-      const cleanup = () => {
-        if (timer) clearTimeout(timer);
-        page.cdpSession.off("Page.javascriptDialogClosed", handler);
-      };
+    while ((page as any)._has_alert) {
+      if (deadline !== Infinity && Date.now() >= deadline) return false;
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
 
-      page.cdpSession.on("Page.javascriptDialogClosed", handler);
-    });
+    return this._page;
   }
 }

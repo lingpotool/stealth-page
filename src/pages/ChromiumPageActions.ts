@@ -1,5 +1,6 @@
 import { ChromiumPage } from "./ChromiumPage";
 import { Element } from "../core/Element";
+import { NoneElement } from "../core/NoneElement";
 import { keyDefinitions, modifierBit } from "../core/Keys";
 
 /**
@@ -55,7 +56,7 @@ export class ChromiumPageActions {
       }
     } else if (typeof eleOrLoc === "string") {
       const ele = await this._page.ele(eleOrLoc);
-      if (!ele) throw new Error(`Element not found: ${eleOrLoc}`);
+      if (ele instanceof NoneElement) throw new Error(`Element not found: ${eleOrLoc}`);
       await ele.scroll_into_view();
       if (midPoint) {
         const vp = await ele.rect.viewport_midpoint();
@@ -360,19 +361,26 @@ export class ChromiumPageActions {
     const page = this._page["_page"];
     if (!page) return this;
 
+    if ((page as any)._has_alert) return this;
+
     // 检查是否是修饰键
     if (key in modifierBit) {
       this._modifier |= modifierBit[key];
     }
 
     const def = keyDefinitions[key] || { key, keyCode: 0, code: "" };
-    await page.cdpSession.send("Input.dispatchKeyEvent", {
-      type: "keyDown",
-      key: def.key,
-      code: def.code,
-      windowsVirtualKeyCode: def.keyCode,
-      modifiers: this._modifier,
-    });
+    try {
+      await page.cdpSession.send("Input.dispatchKeyEvent", {
+        type: "keyDown",
+        key: def.key,
+        code: def.code,
+        windowsVirtualKeyCode: def.keyCode,
+        modifiers: this._modifier,
+      });
+    } catch (e: any) {
+      if (e?.type === 'alert_exists') return this;
+      throw e;
+    }
     return this;
   }
 
@@ -383,19 +391,26 @@ export class ChromiumPageActions {
     const page = this._page["_page"];
     if (!page) return this;
 
+    if ((page as any)._has_alert) return this;
+
     // 检查是否是修饰键
     if (key in modifierBit) {
       this._modifier &= ~modifierBit[key];
     }
 
     const def = keyDefinitions[key] || { key, keyCode: 0, code: "" };
-    await page.cdpSession.send("Input.dispatchKeyEvent", {
-      type: "keyUp",
-      key: def.key,
-      code: def.code,
-      windowsVirtualKeyCode: def.keyCode,
-      modifiers: this._modifier,
-    });
+    try {
+      await page.cdpSession.send("Input.dispatchKeyEvent", {
+        type: "keyUp",
+        key: def.key,
+        code: def.code,
+        windowsVirtualKeyCode: def.keyCode,
+        modifiers: this._modifier,
+      });
+    } catch (e: any) {
+      if (e?.type === 'alert_exists') return this;
+      throw e;
+    }
     return this;
   }
 

@@ -494,20 +494,30 @@ export class ElementClicker {
    */
   private async _click(viewX: number, viewY: number, button: string = "left", count: number = 1): Promise<ClickableElement> {
     for (let i = 0; i < count; i++) {
-      await this._ele.session.send("Input.dispatchMouseEvent", {
-        type: "mousePressed",
-        x: viewX,
-        y: viewY,
-        button,
-        clickCount: 1,
-      });
-      await this._ele.session.send("Input.dispatchMouseEvent", {
-        type: "mouseReleased",
-        x: viewX,
-        y: viewY,
-        button,
-        clickCount: 1,
-      });
+      try {
+        await this._ele.session.send("Input.dispatchMouseEvent", {
+          type: "mousePressed",
+          x: viewX,
+          y: viewY,
+          button,
+          clickCount: 1,
+        });
+      } catch (e: any) {
+        if (e?.type === 'alert_exists') break;
+        throw e;
+      }
+      try {
+        await this._ele.session.send("Input.dispatchMouseEvent", {
+          type: "mouseReleased",
+          x: viewX,
+          y: viewY,
+          button,
+          clickCount: 1,
+        });
+      } catch (e: any) {
+        if (e?.type === 'alert_exists') break;
+        throw e;
+      }
     }
     return this._ele;
   }

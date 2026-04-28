@@ -1,12 +1,9 @@
 import { CDPSession } from "./CDPSession";
 import { Element } from "./Element";
+import { NoneElement } from "./NoneElement";
 import { parseLocator } from "./locator";
 import { ShadowRootStates } from "../units/ShadowRootStates";
 
-/**
- * ShadowRoot 类，对应 DrissionPage 的 ShadowRoot
- * 用于操作 Shadow DOM 内的元素
- */
 export class ShadowRoot {
   private readonly _session: CDPSession;
   private readonly _parentEle: Element;
@@ -41,9 +38,6 @@ export class ShadowRoot {
     return "shadow-root";
   }
 
-  /**
-   * 状态检查对象
-   */
   get states(): ShadowRootStates {
     if (!this._states) {
       this._states = new ShadowRootStates(this);
@@ -55,24 +49,20 @@ export class ShadowRoot {
     return this._backendNodeId;
   }
 
-  /**
-   * 获取 shadow root 的 innerHTML
-   */
+  equals(other: any): boolean {
+    if (!(other instanceof ShadowRoot)) return false;
+    return this._backendNodeId > 0 && this._backendNodeId === other._backendNodeId;
+  }
+
   async inner_html(): Promise<string> {
     return this.run_js("return this.innerHTML;");
   }
 
-  /**
-   * 获取 shadow root 的 HTML
-   */
   async html(): Promise<string> {
     const inner = await this.inner_html();
     return `<shadow_root>${inner}</shadow_root>`;
   }
 
-  /**
-   * 在 shadow root 内执行 JS
-   */
   async run_js(script: string, ...args: any[]): Promise<any> {
     const objectId = await this._getObjectId();
     const needsReturn = !script.trimStart().startsWith("return ") && !script.includes("\n");
@@ -90,9 +80,6 @@ export class ShadowRoot {
     return result.value;
   }
 
-  /**
-   * 异步执行 JS
-   */
   async run_async_js(script: string, ...args: any[]): Promise<void> {
     const objectId = await this._getObjectId();
     await this._session.send("Runtime.callFunctionOn", {
@@ -103,79 +90,151 @@ export class ShadowRoot {
     });
   }
 
-  /**
-   * 在 shadow root 内查找单个元素
-   */
-  async ele(locator: string, index: number = 1): Promise<Element | null> {
+  async ele(locator: string, index: number = 1, timeout?: number): Promise<Element | NoneElement> {
+    if (timeout !== undefined && timeout > 0) {
+      const deadline = Date.now() + timeout * 1000;
+      while (true) {
+        const elements = await this.eles(locator);
+        const idx = index > 0 ? index - 1 : elements.length + index;
+        if (elements[idx]) return elements[idx];
+        if (Date.now() >= deadline) break;
+        await new Promise(r => setTimeout(r, 200));
+      }
+    }
     const elements = await this.eles(locator);
     const idx = index > 0 ? index - 1 : elements.length + index;
-    return elements[idx] ?? null;
+    const result = elements[idx] ?? null;
+    if (!result) {
+      if (NoneElement.raiseWhenNotFound) {
+        const { ElementNotFoundError } = await import("../errors");
+        throw new ElementNotFoundError(locator);
+      }
+      return new NoneElement("ele", { locator, index });
+    }
+    return result;
   }
 
-  /**
-   * 在 shadow root 内查找所有元素
-   */
-  async eles(locator: string): Promise<Element[]> {
-    const parsed = parseLocator(locator);
+  async eles(locator: string, timeout?: number): Promise<Element[]> {
+    if (timeout !== undefined && timeout > 0) {
+      const deadline = Date.now() + timeout * 1000;
+      while (true) {
+        const result = await this._elesOnce(locator);
+        if (result.length > 0) return result;
+        if (Date.now() >= deadline) break;
+        await new Promise(r => setTimeout(r, 200));
+      }
+    }
+    return this._elesOnce(locator);
+  }
 
+  private async _elesOnce(locator: string): Promise<Element[]> {
+    const parsed = parseLocator(locator);
     if (parsed.type === "xpath") {
       return this._elesByXPath(parsed.value);
     }
-
-    // CSS 选择器 — 使用 Runtime.callFunctionOn 在 shadow root 上执行 querySelectorAll
     return this._elesByCss(parsed.value);
   }
 
-  /**
-   * 获取父元素
-   */
-  async parent(levelOrLoc: number | string = 1): Promise<Element | null> {
+  async s_ele(locator: string, index: number = 1): Promise<any> {
+    const html = await this.html();
+    const { load } = await import("cheerio");
+    const { SessionElement } = await import("./SessionElement");
+    const $ = load(html);
+    const parsed = parseLocator(locator);
+    let nodes: any[];
+    if (parsed.type === "css") {
+      nodes = $(parsed.value).toArray();
+    } else {
+      nodes = [];
+    }
+    const idx = index > 0 ? index - 1 : nodes.length + index;
+    const node = nodes[idx];
+    return node ? new SessionElement($, node) : null;
+  }
+
+  async s_eles(locator: string): Promise<any[]> {
+    const html = await this.html();
+    const { load } = await import("cheerio");
+    const { SessionElement } = await import("./SessionElement");
+    const $ = load(html);
+    const parsed = parseLocator(locator);
+    let nodes: any[];
+    if (parsed.type === "css") {
+      nodes = $(parsed.value).toArray();
+    } else {
+      nodes = [];
+    }
+    return nodes.map((node: any) => new SessionElement($, node));
+  }
+
+  async parent(levelOrLoc: number | string = 1): Promise<Element | NoneElement> {
     return this._parentEle.parent(levelOrLoc);
   }
 
-  /**
-   * 获取子元素
-   */
-  async child(locatorOrIndex: string | number = 1, index: number = 1): Promise<Element | null> {
+  async child(locatorOrIndex: string | number = 1, index: number = 1, eleOnly: boolean = true): Promise<Element | NoneElement> {
     if (typeof locatorOrIndex === "number") {
-      const children = await this.children();
+      const children = await this.children("", eleOnly);
       const idx = locatorOrIndex > 0 ? locatorOrIndex - 1 : children.length + locatorOrIndex;
-      return children[idx] ?? null;
+      const result = children[idx] ?? null;
+      if (!result) {
+        if (NoneElement.raiseWhenNotFound) {
+          const { ElementNotFoundError } = await import("../errors");
+          throw new ElementNotFoundError("child");
+        }
+        return new NoneElement("child", { index: locatorOrIndex });
+      }
+      return result;
     }
-    const children = await this.children(locatorOrIndex);
+    const children = await this.children(locatorOrIndex, eleOnly);
     const idx = index > 0 ? index - 1 : children.length + index;
-    return children[idx] ?? null;
+    const result = children[idx] ?? null;
+    if (!result) {
+      if (NoneElement.raiseWhenNotFound) {
+        const { ElementNotFoundError } = await import("../errors");
+        throw new ElementNotFoundError(locatorOrIndex);
+      }
+      return new NoneElement("child", { locator: locatorOrIndex, index });
+    }
+    return result;
   }
 
-  /**
-   * 获取所有子元素
-   */
-  async children(locator: string = ""): Promise<Element[]> {
+  async children(locator: string = "", eleOnly: boolean = true): Promise<Element[]> {
     if (!locator) {
       return this.eles("css:*");
     }
     return this.eles(locator);
   }
 
-  /**
-   * 获取下一个兄弟元素（相对于 parent_ele）
-   */
-  async next(locator: string = "", index: number = 1): Promise<Element | null> {
-    return this._parentEle.next(locator, index);
+  async next(locator: string = "", index: number = 1, eleOnly: boolean = true): Promise<Element | NoneElement> {
+    return this._parentEle.next(locator, index, eleOnly);
   }
 
-  /**
-   * 获取前面的兄弟元素
-   */
-  async before(locator: string = "", index: number = 1): Promise<Element | null> {
-    return this._parentEle.before(locator, index);
+  async prev(locator: string = "", index: number = 1, eleOnly: boolean = true): Promise<Element | NoneElement> {
+    return this._parentEle.prev(locator, index, eleOnly);
   }
 
-  /**
-   * 获取后面的兄弟元素
-   */
-  async after(locator: string = "", index: number = 1): Promise<Element | null> {
-    return this._parentEle.after(locator, index);
+  async nexts(locator: string = "", eleOnly: boolean = true): Promise<Element[]> {
+    return this._parentEle.nexts(locator, eleOnly);
+  }
+
+  async prevs(locator: string = "", eleOnly: boolean = true): Promise<Element[]> {
+    return this._parentEle.prevs(locator, eleOnly);
+  }
+
+  async before(locator: string = "", index: number = 1, eleOnly: boolean = true): Promise<Element | NoneElement> {
+    return this._parentEle.before(locator, index, eleOnly);
+  }
+
+  async after(locator: string = "", index: number = 1, eleOnly: boolean = true): Promise<Element | NoneElement> {
+    return this._parentEle.after(locator, index, eleOnly);
+  }
+
+  async befores(locator: string = "", eleOnly: boolean = true): Promise<Element[]> {
+    return this._parentEle.befores(locator, eleOnly);
+  }
+
+  async afters(locator: string = "", eleOnly: boolean = true): Promise<Element[]> {
+    return this._parentEle.afters(locator, eleOnly);
   }
 
   toString(): string {
@@ -195,7 +254,6 @@ export class ShadowRoot {
       return object.objectId;
     }
 
-    // 通过父元素获取 shadow root
     const parentObjId = await this._parentEle.getObjectId();
     const { result } = await this._session.send<{ result: { objectId?: string } }>("Runtime.callFunctionOn", {
       objectId: parentObjId,
@@ -215,7 +273,6 @@ export class ShadowRoot {
     if (this._nodeId > 0) return this._nodeId;
 
     const objectId = await this._getObjectId();
-    // 确保 DOM 树已初始化
     await this._session.send("DOM.getDocument", { depth: -1 });
     const { nodeId } = await this._session.send<{ nodeId: number }>("DOM.requestNode", {
       objectId,
@@ -226,13 +283,13 @@ export class ShadowRoot {
 
   private async _elesByCss(selector: string): Promise<Element[]> {
     const objectId = await this._getObjectId();
-    const escapedSelector = selector.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 
     const { result } = await this._session.send<{
       result: { objectId?: string; subtype?: string };
     }>("Runtime.callFunctionOn", {
       objectId,
-      functionDeclaration: `function() { return Array.from(this.querySelectorAll('${escapedSelector}')); }`,
+      functionDeclaration: `function(sel) { return Array.from(this.querySelectorAll(sel)); }`,
+      arguments: [{ value: selector }],
       returnByValue: false,
     });
 
@@ -261,7 +318,6 @@ export class ShadowRoot {
           elements.push(new Element(this._session, { nodeId }, this._page));
         }
       } catch {
-        // 跳过无效元素
       }
     }
 
@@ -269,25 +325,24 @@ export class ShadowRoot {
   }
 
   private async _elesByXPath(xpath: string): Promise<Element[]> {
-    // Shadow DOM 内的 XPath 查找
     const objectId = await this._getObjectId();
-    const escapedXpath = xpath.replace(/'/g, "\\'");
 
-    const js = `(() => {
+    const js = `function(xpath){
       let a=[];
-      let e=document.evaluate('${escapedXpath}',this,null,7,null);
+      let e=document.evaluate(xpath,this,null,7,null);
       for(let i=0;i<e.snapshotLength;i++){
         let node=e.snapshotItem(i);
         if(node.nodeType===1){a.push(node);}
       }
       return a;
-    })()`;
+    }`;
 
     const { result } = await this._session.send<{
       result: { objectId?: string; subtype?: string; description?: string };
     }>("Runtime.callFunctionOn", {
       objectId,
-      functionDeclaration: `function() { ${js.replace("document.evaluate", "document.evaluate")} }`,
+      functionDeclaration: js,
+      arguments: [{ value: xpath }],
       returnByValue: false,
     });
 
@@ -316,7 +371,6 @@ export class ShadowRoot {
           elements.push(new Element(this._session, { nodeId }, this._page));
         }
       } catch {
-        // 跳过无效元素
       }
     }
 

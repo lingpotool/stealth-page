@@ -3,6 +3,7 @@ import { ChromiumTab } from "./ChromiumTab";
 import { SessionPage } from "./SessionPage";
 import { SessionOptions } from "../config/SessionOptions";
 import { Element } from "../core/Element";
+import { NoneElement } from "../core/NoneElement";
 import { SessionElement } from "../core/SessionElement";
 
 export type MixTabMode = "d" | "s";
@@ -210,12 +211,10 @@ export class MixTab extends ChromiumTab {
     return this._sessionPage.cookies();
   }
 
-  async ele(locator: string, index: number = 1, timeout?: number): Promise<Element | null> {
+  async ele(locator: string, index: number = 1, timeout?: number): Promise<Element | NoneElement> {
     if (this._mode === "d") {
       return super.ele(locator, index, timeout);
     }
-    // s 模式下返回 SessionElement，但为了类型兼容，这里返回 Element | null
-    // 实际使用时可以通过 s_ele 获取 SessionElement
     const sessionEle = await this._sessionPage.ele(locator, index, timeout);
     return sessionEle as any;
   }

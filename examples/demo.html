@@ -21,12 +21,12 @@
     .green { background: #8f8; }
     .blue { background: #88f; color: #fff; }
     .yellow { background: #ff8; }
-    #positioned-area { position: relative; height: 180px; margin: 10px 0; }
-    #pos-center { position: absolute; left: 150px; top: 50px; }
-    #pos-east   { position: absolute; left: 250px; top: 50px; }
-    #pos-west   { position: absolute; left: 50px;  top: 50px; }
-    #pos-north  { position: absolute; left: 150px; top: 0; }
-    #pos-south  { position: absolute; left: 150px; top: 110px; }
+    #positioned-area { position: relative; height: 250px; margin: 10px 0 100px 0; background: #f0f0f0; z-index: 100; }
+    #pos-center { position: absolute; left: 150px; top: 110px; width: 50px; height: 30px; z-index: 101; }
+    #pos-east   { position: absolute; left: 250px; top: 110px; width: 50px; height: 30px; z-index: 101; }
+    #pos-west   { position: absolute; left: 50px;  top: 110px; width: 50px; height: 30px; z-index: 101; }
+    #pos-north  { position: absolute; left: 150px; top: 20px; width: 50px; height: 30px; z-index: 101; }
+    #pos-south  { position: absolute; left: 150px; top: 200px; width: 50px; height: 30px; z-index: 101; }
     #scrollable-div { width: 300px; height: 150px; overflow: auto; border: 2px solid #666; }
     #scroll-inner { width: 800px; height: 800px; background: linear-gradient(135deg, #fff, #4a90d9); position: relative; }
     #scroll-inner-bottom { position: absolute; bottom: 10px; right: 10px; }
@@ -147,32 +147,13 @@
 </section>
 
 <!-- ==================== 5. 定位符测试 ==================== -->
-<section id="sec-locator">
-  <h2>5. 定位符语法测试</h2>
-  <div class="loc-test" data-type="css">CSS定位</div>
-  <div class="loc-test" data-type="text">文本定位测试</div>
-  <div class="loc-test" data-type="xpath">XPath定位</div>
-  <div data-start="hello-world">属性开头匹配</div>
-  <div data-end="world-end">属性结尾匹配</div>
-  <div data-contain="middle-part-here">属性包含匹配</div>
-  <input type="text" id="tag-attr-input" name="username" value="test-user">
-  <ul id="xpath-list">
-    <li class="xpath-item">XPath项1</li>
-    <li class="xpath-item">XPath项2</li>
-    <li class="xpath-item">XPath项3</li>
+<section id="sec-locators">
+  <h2>5. 定位符测试</h2>
+  <ul>
+    <li id="li-1" class="list-item">项目1</li>
+    <li id="li-2" class="list-item">项目2</li>
+    <li id="li-3" class="list-item">项目3</li>
   </ul>
-</section>
-
-<!-- ==================== 6. 方向定位 ==================== -->
-<section id="sec-direction">
-  <h2>6. 方向定位 (east/west/north/south)</h2>
-  <div id="positioned-area">
-    <div id="pos-north" class="box yellow">北</div>
-    <div id="pos-west" class="box red">西</div>
-    <div id="pos-center" class="box green">中心</div>
-    <div id="pos-east" class="box blue">东</div>
-    <div id="pos-south" class="box yellow">南</div>
-  </div>
 </section>
 
 <!-- ==================== 7. 滚动测试 ==================== -->
@@ -220,7 +201,7 @@
 <!-- ==================== 11. Hover ==================== -->
 <section id="sec-hover">
   <h2>11. Hover 测试</h2>
-  <div id="hover-box" onmouseenter="this.dataset.hovered='true'" onmouseleave="this.dataset.hovered='false'">悬停我</div>
+  <div id="hover-box" onmouseover="this.dataset.hovered='true'" onmouseout="this.dataset.hovered='false'">悬停我</div>
 </section>
 
 <!-- ==================== 12. 弹窗 ==================== -->
@@ -289,6 +270,18 @@
   <div style="height: 2000px; background: linear-gradient(to bottom, #fff, #4a90d9); position: relative;">
     <div id="scroll-mid" style="position: absolute; top: 1000px; left: 20px;">页面中间标记</div>
     <div id="scroll-bottom" style="position: absolute; bottom: 20px; left: 20px;">页面底部标记</div>
+  </div>
+</section>
+
+<!-- ==================== 21. 方向定位 ==================== -->
+<section id="sec-direction">
+  <h2>21. 方向定位 (east/west/north/south)</h2>
+  <div id="positioned-area">
+    <div id="pos-north" class="box yellow">北</div>
+    <div id="pos-west" class="box red">西</div>
+    <div id="pos-center" class="box green">中心</div>
+    <div id="pos-east" class="box blue">东</div>
+    <div id="pos-south" class="box yellow">南</div>
   </div>
 </section>
 
