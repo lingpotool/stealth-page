@@ -1,5 +1,6 @@
 import { SessionPage } from "../pages/SessionPage";
 import { SessionOptions } from "../config/SessionOptions";
+import { SessionCookiesSetter } from "./SessionCookiesSetter";
 
 /**
  * SessionPage 设置类
@@ -12,9 +13,10 @@ export class SessionPageSetter {
     this._owner = owner;
   }
 
-  /**
-   * 设置下载路径
-   */
+  get cookies(): SessionCookiesSetter {
+    return new SessionCookiesSetter(this._owner);
+  }
+
   download_path(path: string | null): void {
     if (path !== null) {
       (this._owner.options as any).downloadPath = path;

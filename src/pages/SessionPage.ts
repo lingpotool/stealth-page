@@ -131,11 +131,16 @@ export class SessionPage {
     return this._options.timeout;
   }
 
-  async cookies(): Promise<CookieEntry[]> {
+  async cookies(allDomains: boolean = false, allInfo: boolean = false): Promise<CookieEntry[]> {
     const now = Date.now();
-    return this._cookies
-      .filter((c) => !c.expiresAt || c.expiresAt > now)
-      .map((c) => ({ ...c }));
+    let result = this._cookies;
+    if (!allDomains) {
+      const currentDomain = this._url ? new URL(this._url).hostname : '';
+      result = result.filter(c => !c.domain || c.domain === currentDomain);
+    }
+    return result
+      .filter((c) => allDomains || !c.expiresAt || c.expiresAt > now)
+      .map((c) => allInfo ? { ...c } : { name: c.name, value: c.value, domain: c.domain, path: c.path });
   }
 
   async set_cookies(cookies: Array<{ name: string; value: string; domain?: string; path?: string; expiresAt?: number }>): Promise<void> {
