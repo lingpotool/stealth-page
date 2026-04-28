@@ -68,6 +68,11 @@ export * from "./units/BrowserSetter";
 export * from "./units/BrowserCookiesSetter";
 export * from "./units/SessionCookiesSetter";
 export * from "./units/WebPageCookiesSetter";
+export * from "./units/MixTabCookiesSetter";
+export * from "./units/WebPageSetter";
+export * from "./units/WebPageWaiter";
+export * from "./units/MixTabSetter";
+export * from "./units/MixTabWaiter";
 export * from "./units/BrowserWaiter";
 export * from "./units/BrowserStates";
 

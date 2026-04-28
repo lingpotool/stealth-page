@@ -5,6 +5,8 @@ import { SessionOptions } from "../config/SessionOptions";
 import { Element } from "../core/Element";
 import { NoneElement } from "../core/NoneElement";
 import { SessionElement } from "../core/SessionElement";
+import { MixTabSetter } from "../units/MixTabSetter";
+import { MixTabWaiter } from "../units/MixTabWaiter";
 
 export type MixTabMode = "d" | "s";
 
@@ -16,6 +18,8 @@ export class MixTab extends ChromiumTab {
   private _mode: MixTabMode = "d";
   private _sessionPage: SessionPage;
   private _sessionUrl: string | null = null;
+  private _mixSetter: MixTabSetter | null = null;
+  private _mixWaiter: MixTabWaiter | null = null;
 
   constructor(browser: Chromium, tabId: string, sessionOptions?: SessionOptions) {
     super(browser, tabId);
@@ -23,6 +27,24 @@ export class MixTab extends ChromiumTab {
   }
 
   // ========== 模式相关 ==========
+
+  get mix_set(): MixTabSetter {
+    if (!this._mixSetter) {
+      this._mixSetter = new MixTabSetter(this);
+    }
+    return this._mixSetter;
+  }
+
+  get mix_wait(): MixTabWaiter {
+    if (!this._mixWaiter) {
+      this._mixWaiter = new MixTabWaiter(this);
+    }
+    return this._mixWaiter;
+  }
+
+  get response(): { status: number | null; headers: any; body: string | null; url: string | null } {
+    return this._sessionPage.response;
+  }
 
   get mode(): MixTabMode {
     return this._mode;

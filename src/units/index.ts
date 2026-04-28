@@ -29,6 +29,11 @@ export { BrowserSetter } from "./BrowserSetter";
 export { BrowserCookiesSetter, BrowserCookieData } from "./BrowserCookiesSetter";
 export { SessionCookiesSetter } from "./SessionCookiesSetter";
 export { WebPageCookiesSetter } from "./WebPageCookiesSetter";
+export { MixTabCookiesSetter } from "./MixTabCookiesSetter";
+export { WebPageSetter } from "./WebPageSetter";
+export { WebPageWaiter } from "./WebPageWaiter";
+export { MixTabSetter } from "./MixTabSetter";
+export { MixTabWaiter } from "./MixTabWaiter";
 export { BrowserWaiter } from "./BrowserWaiter";
 export { BrowserStates } from "./BrowserStates";
 

@@ -3,6 +3,8 @@ import { SessionPage } from "./SessionPage";
 import { ChromiumOptions } from "../config/ChromiumOptions";
 import { SessionOptions } from "../config/SessionOptions";
 import { SessionElement } from "../core/SessionElement";
+import { WebPageSetter } from "../units/WebPageSetter";
+import { WebPageWaiter } from "../units/WebPageWaiter";
 
 export type WebPageMode = "d" | "s";
 
@@ -14,6 +16,34 @@ export class WebPage {
   private _mode: WebPageMode;
   private readonly _chromiumPage: ChromiumPage;
   private readonly _sessionPage: SessionPage;
+  private _setter: WebPageSetter | null = null;
+  private _waiter: WebPageWaiter | null = null;
+
+  get set(): WebPageSetter {
+    if (!this._setter) {
+      this._setter = new WebPageSetter(this);
+    }
+    return this._setter;
+  }
+
+  get web_wait(): WebPageWaiter {
+    if (!this._waiter) {
+      this._waiter = new WebPageWaiter(this);
+    }
+    return this._waiter;
+  }
+
+  get response(): { status: number | null; headers: any; body: string | null; url: string | null } {
+    return this._sessionPage.response;
+  }
+
+  get chromium_page(): ChromiumPage {
+    return this._chromiumPage;
+  }
+
+  get session_page(): SessionPage {
+    return this._sessionPage;
+  }
 
   get wait(): any {
     if (this._mode === "d") {
@@ -134,13 +164,6 @@ export class WebPage {
 
   get session_options(): SessionOptions {
     return this._sessionPage.options;
-  }
-
-  get set(): any {
-    if (this._mode === "d") {
-      return this._chromiumPage.set;
-    }
-    return null;
   }
 
   get actions(): any {

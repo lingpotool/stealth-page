@@ -37,6 +37,10 @@ export class BrowserStates {
     );
   }
 
+  get is_existed(): boolean {
+    return !!(this._browser as any)._process_id;
+  }
+
   /**
    * 返回标签页数量
    */

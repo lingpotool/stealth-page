@@ -383,9 +383,10 @@ export class ChromiumFrame {
     return result.value;
   }
 
-  async style(name: string): Promise<string> {
+  async style(name: string, pseudoEle: string = ""): Promise<string> {
+    const target = pseudoEle ? `document.querySelector('iframe')::${pseudoEle}` : "document.documentElement";
     const { result } = await this.session.send<{ result: { value: string } }>("Runtime.evaluate", {
-      expression: `getComputedStyle(document.documentElement)[${JSON.stringify(name)}]`,
+      expression: `getComputedStyle(${target})[${JSON.stringify(name)}]`,
       contextId: this._contextId || undefined,
       returnByValue: true,
     });
@@ -466,5 +467,58 @@ export class ChromiumFrame {
 
   async children(locator: string = "", timeout?: number): Promise<Element[]> {
     return this._frameEle.children(locator, true);
+  }
+
+  async link(): Promise<string> {
+    const href = await this._frameEle.attr("href");
+    if (href) return href;
+    const src = await this._frameEle.attr("src");
+    return src || "";
+  }
+
+  async xpath(): Promise<string> {
+    try {
+      const { result } = await this.session.send<{ result: { value: string } }>("Runtime.evaluate", {
+        expression: `(function(){function getXPath(el){if(el.id!=='')return '//*[@id=\"'+el.id+'\"]';if(el===document.body)return el.tagName;var ix=0;var siblings=el.parentNode.childNodes;for(var i=0;i<siblings.length;i++){var sib=siblings[i];if(sib===el)return getXPath(el.parentNode)+'/'+el.tagName+'['+(ix+1)+']';if(sib.nodeType===1&&sib.tagName===el.tagName)ix++;}}return getXPath(this);}).call(document.querySelector('iframe'))`,
+        contextId: this._contextId || undefined,
+        returnByValue: true,
+      });
+      return result.value || "";
+    } catch {
+      return "";
+    }
+  }
+
+  async css_path(): Promise<string> {
+    try {
+      const { result } = await this.session.send<{ result: { value: string } }>("Runtime.evaluate", {
+        expression: `(function(){function getCSSPath(el){if(el.id!=='')return '#'+el.id;if(el===document.body)return el.tagName.toLowerCase();var ix=0;var siblings=el.parentNode.children;for(var i=0;i<siblings.length;i++){var sib=siblings[i];if(sib===el)return getCSSPath(el.parentNode)+' > '+el.tagName.toLowerCase()+':nth-of-type('+(ix+1)+')';if(sib.tagName===el.tagName)ix++;}}return getCSSPath(this);}).call(document.querySelector('iframe'))`,
+        contextId: this._contextId || undefined,
+        returnByValue: true,
+      });
+      return result.value || "";
+    } catch {
+      return "";
+    }
+  }
+
+  async child_count(): Promise<number> {
+    return this._frameEle.child_count();
+  }
+
+  async shadow_root(): Promise<any> {
+    return this._frameEle.shadow_root;
+  }
+
+  async sr(): Promise<any> {
+    return this.shadow_root();
+  }
+
+  get download_path(): string {
+    return '.';
+  }
+
+  get doc_ele(): Element {
+    return this._frameEle;
   }
 }
