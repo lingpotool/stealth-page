@@ -221,15 +221,33 @@ export class Chromium {
     return this._browser.newPage();
   }
 
-  async quit(): Promise<void> {
+  async quit(options?: { timeout?: number; force?: boolean; delData?: boolean }): Promise<void> {
+    const { timeout = 5, force = true, delData = false } = options || {};
+    const deadline = Date.now() + timeout * 1000;
+
     if (this._browser) {
-      await this._browser.close();
+      try {
+        await Promise.race([
+          this._browser.close(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), deadline - Date.now())),
+        ]);
+      } catch {}
     }
     if (this._cdpSession) {
       try {
         await this._cdpSession.send("Browser.close");
-      } catch {
-      }
+      } catch {}
+    }
+    if (force && this._process_id) {
+      try {
+        process.kill(this._process_id);
+      } catch {}
+    }
+    if (delData && this._options.userDataPath) {
+      try {
+        const fs = await import("fs");
+        fs.rmSync(this._options.userDataPath, { recursive: true, force: true });
+      } catch {}
     }
     const address = this._options.address || '127.0.0.1:9222';
     Chromium._BROWSERS.delete(address);
@@ -237,14 +255,37 @@ export class Chromium {
     this._browser = null;
   }
 
-  async get_tabs(): Promise<Array<{ id: string; url: string; title: string; type: string }>> {
+  async get_tab(idOrNum?: string | number, title?: string, url?: string): Promise<{ id: string; url: string; title: string; type: string } | null> {
+    if (!this._cdpSession) return null;
+    const tabs = await this.get_tabs();
+
+    if (idOrNum !== undefined) {
+      if (typeof idOrNum === 'number') {
+        const idx = idOrNum > 0 ? idOrNum - 1 : tabs.length + idOrNum;
+        return tabs[idx] ?? null;
+      }
+      return tabs.find(t => t.id === idOrNum) ?? null;
+    }
+
+    if (title || url) {
+      return tabs.find(t => {
+        if (title && !t.title.includes(title)) return false;
+        if (url && !t.url.includes(url)) return false;
+        return true;
+      }) ?? null;
+    }
+
+    return tabs[0] ?? null;
+  }
+
+  async get_tabs(title?: string, url?: string): Promise<Array<{ id: string; url: string; title: string; type: string }>> {
     if (!this._cdpSession) {
       return [];
     }
     const { targetInfos } = await this._cdpSession.send<{
       targetInfos: Array<{ targetId: string; url: string; title: string; type: string }>;
     }>("Target.getTargets");
-    return targetInfos
+    let result = targetInfos
       .filter((t) => t.type === "page")
       .map((t) => ({
         id: t.targetId,
@@ -252,11 +293,28 @@ export class Chromium {
         title: t.title,
         type: t.type,
       }));
+    if (title) {
+      result = result.filter(t => t.title.includes(title));
+    }
+    if (url) {
+      result = result.filter(t => t.url.includes(url));
+    }
+    return result;
   }
 
-  async activate_tab(tabId: string): Promise<void> {
+  async activate_tab(tabIdOrIndex: string | number): Promise<void> {
     if (!this._cdpSession) {
       return;
+    }
+    let tabId: string;
+    if (typeof tabIdOrIndex === 'number') {
+      const tabs = await this.get_tabs();
+      const idx = tabIdOrIndex > 0 ? tabIdOrIndex - 1 : tabs.length + tabIdOrIndex;
+      const tab = tabs[idx];
+      if (!tab) return;
+      tabId = tab.id;
+    } else {
+      tabId = tabIdOrIndex;
     }
     await this._cdpSession.send("Target.activateTarget", {
       targetId: tabId,
@@ -272,21 +330,36 @@ export class Chromium {
     });
   }
 
-  async new_tab(url?: string): Promise<string> {
+  async new_tab(url?: string, options?: { newWindow?: boolean; background?: boolean; newContext?: boolean }): Promise<string> {
     if (!this._cdpSession) {
       throw new Error("Chromium is not connected yet.");
     }
+    const { newWindow = false, background = false, newContext = false } = options || {};
+
+    let browserContextId: string | undefined;
+    if (newContext) {
+      try {
+        const result = await this._cdpSession.send<{ browserContextId: string }>("Target.createBrowserContext", {
+          disposeOnDetach: true,
+        });
+        browserContextId = result.browserContextId;
+      } catch {}
+    }
+
+    const params: Record<string, any> = { url: url || "about:blank" };
+    if (newWindow) params.newWindow = true;
+    if (background) params.background = true;
+    if (browserContextId) params.browserContextId = browserContextId;
+
     try {
-      const { targetId } = await this._cdpSession.send<{ targetId: string }>("Target.createTarget", {
-        url: url || "about:blank",
-      });
+      const { targetId } = await this._cdpSession.send<{ targetId: string }>("Target.createTarget", params);
       return targetId;
     } catch {
-      return await this._new_tab_by_js(url);
+      return await this._new_tab_by_js(url, newWindow);
     }
   }
 
-  private async _new_tab_by_js(url?: string): Promise<string> {
+  private async _new_tab_by_js(url?: string, newWindow?: boolean): Promise<string> {
     if (!this._cdpSession) {
       throw new Error("Chromium is not connected yet.");
     }
@@ -299,8 +372,9 @@ export class Chromium {
     const childSession = this._cdpSession.createChildSession
       ? this._cdpSession.createChildSession(sessionId)
       : this._cdpSession;
+    const windowName = newWindow ? `win_${Date.now()}` : '_blank';
     await childSession.send("Runtime.evaluate", {
-      expression: `window.open('${url || 'about:blank'}', '_blank')`,
+      expression: `window.open('${url || 'about:blank'}', '${windowName}')`,
     });
     await new Promise(resolve => setTimeout(resolve, 500));
     const newTabs = await this.get_tabs();

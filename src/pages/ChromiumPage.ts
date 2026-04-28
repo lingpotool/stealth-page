@@ -25,8 +25,14 @@ export class ChromiumPage extends ChromiumBase {
     }
   }
 
-  async new_tab(url?: string, options?: { newWindow?: boolean; background?: boolean }): Promise<ChromiumTab> {
+  async new_tab(url?: string, options?: { newWindow?: boolean; background?: boolean; newContext?: boolean }): Promise<ChromiumTab> {
     await this.init();
+    if (options?.newContext) {
+      const tabId = await this._browser.new_tab(url, options);
+      const tab = new ChromiumTab(this._browser, tabId);
+      await tab.init();
+      return tab;
+    }
     const { targetId } = await this._browser.cdpSession.send<{ targetId: string }>("Target.createTarget", {
       url: url || "about:blank",
       newWindow: options?.newWindow,
@@ -37,7 +43,7 @@ export class ChromiumPage extends ChromiumBase {
     return tab;
   }
 
-  async get_tab(options?: { idOrNum?: string | number; title?: string; url?: string; asId?: boolean }): Promise<ChromiumTab | string | null> {
+  async get_tab(options?: { idOrNum?: string | number; title?: string; url?: string; tabType?: string; asId?: boolean }): Promise<ChromiumTab | string | null> {
     const tabs = await this._browser.get_tabs();
     if (options?.idOrNum !== undefined) {
       if (typeof options.idOrNum === "string") {
@@ -78,12 +84,21 @@ export class ChromiumPage extends ChromiumBase {
     }
   }
 
-  async get_tabs(): Promise<Array<{ id: string; url: string; title: string }>> {
-    return this._browser.get_tabs();
+  async get_tabs(title?: string, url?: string, tabType?: string, asId?: boolean): Promise<Array<{ id: string; url: string; title: string; type?: string }>> {
+    let tabs = await this._browser.get_tabs(title, url);
+    if (tabType) {
+      tabs = tabs.filter(t => t.type === tabType);
+    }
+    return tabs;
   }
 
-  async activate_tab(tabId: string): Promise<void> {
-    return this._browser.activate_tab(tabId);
+  async get_tab_ids(title?: string, url?: string, tabType?: string): Promise<string[]> {
+    const tabs = await this.get_tabs(title, url, tabType);
+    return tabs.map(t => t.id);
+  }
+
+  async activate_tab(tabIdOrIndex: string | number): Promise<void> {
+    return this._browser.activate_tab(tabIdOrIndex);
   }
 
   async close_tab(tabId?: string): Promise<void> {
@@ -99,8 +114,8 @@ export class ChromiumPage extends ChromiumBase {
     return this._browser.get_tabs().then(tabs => tabs.map(t => t.id));
   }
 
-  async quit(): Promise<void> {
-    return this._browser.quit();
+  async quit(options?: { timeout?: number; force?: boolean; delData?: boolean }): Promise<void> {
+    return this._browser.quit(options);
   }
 
   get address(): string {

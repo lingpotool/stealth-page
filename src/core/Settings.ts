@@ -1,4 +1,5 @@
 import { get_txt_class } from "./Texts";
+import { join } from "path";
 
 class Settings {
   static raise_when_ele_not_found: boolean = false;
@@ -13,6 +14,7 @@ class Settings {
   static retry_times: number = 0;
   static retry_interval: number = 0.5;
   static debug: boolean = false;
+  static suffixes_list: string = join(__dirname, '..', '..', 'suffixes.dat').replace(/\\/g, '/');
   static _lang: any = get_txt_class(null);
 
   static set_raise_when_ele_not_found(on_off: boolean = true): typeof Settings {
@@ -47,6 +49,11 @@ class Settings {
 
   static set_auto_handle_alert(accept: boolean | null = true): typeof Settings {
     Settings.auto_handle_alert = accept;
+    return Settings;
+  }
+
+  static set_suffixes_list(path: string): typeof Settings {
+    Settings.suffixes_list = path.replace(/\\/g, '/');
     return Settings;
   }
 

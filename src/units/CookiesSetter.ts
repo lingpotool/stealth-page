@@ -73,7 +73,7 @@ export class CookiesSetter {
   /**
    * 解析各种格式的 cookie 输入
    */
-  private _parseCookies(cookies: CookieData | CookieData[] | string | Record<string, string>): CookieData[] {
+  protected _parseCookies(cookies: CookieData | CookieData[] | string | Record<string, string>): CookieData[] {
     if (Array.isArray(cookies)) {
       return cookies;
     }

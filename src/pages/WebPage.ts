@@ -111,12 +111,21 @@ export class WebPage {
     return this._mode;
   }
 
-  change_mode(mode?: WebPageMode): void {
+  change_mode(mode?: WebPageMode, go: boolean = true, copyCookies: boolean = true): void {
+    const oldMode = this._mode;
     if (!mode) {
       this._mode = this._mode === "d" ? "s" : "d";
-      return;
+    } else {
+      this._mode = mode;
     }
-    this._mode = mode;
+
+    if (copyCookies && oldMode !== this._mode) {
+      if (this._mode === "s" && oldMode === "d") {
+        this.cookies_to_session(true).catch(() => {});
+      } else if (this._mode === "d" && oldMode === "s") {
+        this.cookies_to_browser().catch(() => {});
+      }
+    }
   }
 
   get chromium_options(): ChromiumOptions {
@@ -283,9 +292,9 @@ export class WebPage {
     return this._sessionPage.cookies();
   }
 
-  async new_tab(url?: string): Promise<any> {
+  async new_tab(url?: string, options?: { newWindow?: boolean; background?: boolean; newContext?: boolean }): Promise<any> {
     if (this._mode === "d") {
-      return this._chromiumPage.new_tab(url);
+      return this._chromiumPage.new_tab(url, options);
     }
     throw new Error("WebPage new_tab() is only available in driver mode.");
   }
@@ -294,6 +303,14 @@ export class WebPage {
     if (this._mode === "d") {
       return this._chromiumPage.close();
     }
+  }
+
+  async close_driver(): Promise<void> {
+    await this._chromiumPage.quit();
+  }
+
+  close_session(): void {
+    this._sessionPage.close();
   }
 
   async run_js(script: string): Promise<any> {
@@ -400,9 +417,9 @@ export class WebPage {
     return null;
   }
 
-  async activate_tab(tabId: string): Promise<void> {
+  async activate_tab(tabIdOrIndex: string | number): Promise<void> {
     if (this._mode === "d") {
-      return this._chromiumPage.activate_tab(tabId);
+      return this._chromiumPage.activate_tab(tabIdOrIndex);
     }
   }
 

@@ -1,4 +1,11 @@
 import { CDPSession } from "../core/CDPSession";
+import { Settings } from "../core/Settings";
+
+function shouldRaise(raiseErr?: boolean | null): boolean {
+  if (raiseErr === true) return true;
+  if (raiseErr === false) return false;
+  return Settings.raise_when_wait_failed;
+}
 
 export interface WaitableElement {
   readonly session: CDPSession;
@@ -27,36 +34,35 @@ export class ElementWaiter {
     return this._ele;
   }
 
-  async deleted(timeout?: number): Promise<WaitableElement | false> {
-    return this._waitState('is_alive', false, timeout);
+  async deleted(timeout?: number, raiseErr?: boolean | null): Promise<WaitableElement | false> {
+    return this._waitState('is_alive', false, timeout, raiseErr);
   }
 
-  async displayed(timeout?: number): Promise<WaitableElement | false> {
-    return this._waitState('is_displayed', true, timeout);
+  async displayed(timeout?: number, raiseErr?: boolean | null): Promise<WaitableElement | false> {
+    return this._waitState('is_displayed', true, timeout, raiseErr);
   }
 
-  async hidden(timeout?: number): Promise<WaitableElement | false> {
-    return this._waitState('is_displayed', false, timeout);
+  async hidden(timeout?: number, raiseErr?: boolean | null): Promise<WaitableElement | false> {
+    return this._waitState('is_displayed', false, timeout, raiseErr);
   }
 
-  async covered(timeout?: number): Promise<WaitableElement | false> {
-    const result = await this._waitState('is_covered', true, timeout);
-    return result;
+  async covered(timeout?: number, raiseErr?: boolean | null): Promise<WaitableElement | false> {
+    return this._waitState('is_covered', true, timeout, raiseErr);
   }
 
-  async not_covered(timeout?: number): Promise<WaitableElement | false> {
-    return this._waitState('is_covered', false, timeout);
+  async not_covered(timeout?: number, raiseErr?: boolean | null): Promise<WaitableElement | false> {
+    return this._waitState('is_covered', false, timeout, raiseErr);
   }
 
-  async enabled(timeout?: number): Promise<WaitableElement | false> {
-    return this._waitState('is_enabled', true, timeout);
+  async enabled(timeout?: number, raiseErr?: boolean | null): Promise<WaitableElement | false> {
+    return this._waitState('is_enabled', true, timeout, raiseErr);
   }
 
-  async disabled(timeout?: number): Promise<WaitableElement | false> {
-    return this._waitState('is_enabled', false, timeout);
+  async disabled(timeout?: number, raiseErr?: boolean | null): Promise<WaitableElement | false> {
+    return this._waitState('is_enabled', false, timeout, raiseErr);
   }
 
-  async disabled_or_deleted(timeout?: number): Promise<WaitableElement | false> {
+  async disabled_or_deleted(timeout?: number, raiseErr?: boolean | null): Promise<WaitableElement | false> {
     const timeoutMs = timeout ?? this._defaultTimeout;
     const deadline = Date.now() + timeoutMs;
 
@@ -69,25 +75,40 @@ export class ElementWaiter {
       }
       await new Promise(resolve => setTimeout(resolve, 50));
     }
+
+    if (shouldRaise(raiseErr)) {
+      const { WaitTimeoutError } = await import("../errors");
+      throw new WaitTimeoutError("disabled_or_deleted timeout");
+    }
+
     return false;
   }
 
-  async clickable(waitMoved: boolean = true, timeout?: number): Promise<WaitableElement | false> {
+  async clickable(waitMoved: boolean = true, timeout?: number, raiseErr?: boolean | null): Promise<WaitableElement | false> {
     const timeoutMs = timeout ?? this._defaultTimeout;
     const t1 = Date.now();
-    const result = await this._waitState('is_clickable', true, timeoutMs);
+    const result = await this._waitState('is_clickable', true, timeoutMs, false);
     if (waitMoved && result) {
       const remaining = timeoutMs - (Date.now() - t1);
-      return this.stop_moving(remaining > 0 ? remaining : 100);
+      const moveResult = await this.stop_moving(remaining > 0 ? remaining : 100);
+      if (!moveResult && shouldRaise(raiseErr)) {
+        const { WaitTimeoutError } = await import("../errors");
+        throw new WaitTimeoutError("clickable timeout (stop_moving)");
+      }
+      return moveResult;
+    }
+    if (!result && shouldRaise(raiseErr)) {
+      const { WaitTimeoutError } = await import("../errors");
+      throw new WaitTimeoutError("clickable timeout");
     }
     return result;
   }
 
-  async has_rect(timeout?: number): Promise<WaitableElement | false> {
-    return this._waitState('has_rect', true, timeout);
+  async has_rect(timeout?: number, raiseErr?: boolean | null): Promise<WaitableElement | false> {
+    return this._waitState('has_rect', true, timeout, raiseErr);
   }
 
-  async stop_moving(timeout?: number, gap: number = 100): Promise<WaitableElement | false> {
+  async stop_moving(timeout?: number, gap: number = 100, raiseErr?: boolean | null): Promise<WaitableElement | false> {
     const timeoutMs = (timeout ?? this._defaultTimeout);
     if (timeoutMs <= 0) {
       return this._ele;
@@ -109,6 +130,12 @@ export class ElementWaiter {
       }
       await new Promise(resolve => setTimeout(resolve, gap));
     }
+
+    if (shouldRaise(raiseErr)) {
+      const { WaitTimeoutError } = await import("../errors");
+      throw new WaitTimeoutError("stop_moving timeout");
+    }
+
     return false;
   }
 
@@ -159,11 +186,11 @@ export class ElementWaiter {
     return true;
   }
 
-  async state(stateName: string, mode: boolean = true, timeout?: number): Promise<WaitableElement | false> {
-    return this._waitState(stateName, mode, timeout);
+  async state(stateName: string, mode: boolean = true, timeout?: number, raiseErr?: boolean | null): Promise<WaitableElement | false> {
+    return this._waitState(stateName, mode, timeout, raiseErr);
   }
 
-  private async _waitState(attr: string, mode: boolean, timeout?: number): Promise<WaitableElement | false> {
+  private async _waitState(attr: string, mode: boolean, timeout?: number, raiseErr?: boolean | null): Promise<WaitableElement | false> {
     const timeoutMs = timeout ?? this._defaultTimeout;
     const deadline = Date.now() + timeoutMs;
 
@@ -221,6 +248,11 @@ export class ElementWaiter {
         return this._ele;
       }
       await new Promise(resolve => setTimeout(resolve, 50));
+    }
+
+    if (shouldRaise(raiseErr)) {
+      const { WaitTimeoutError } = await import("../errors");
+      throw new WaitTimeoutError(`${attr} timeout`);
     }
 
     return false;

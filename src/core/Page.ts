@@ -124,7 +124,7 @@ export class Page {
   private _tab_id: string = '';
   private _target_id: string = '';
   private _js_ready_state: string = 'loading';
-  private _has_alert: boolean = false;
+  _has_alert: boolean = false;
   private _browser: any = null;
   private _timeout: any = null;
   private _load_mode_str: string = 'normal';
@@ -447,7 +447,7 @@ export class Page {
       returnByValue: true,
     });
     try {
-      return JSON.parse(result.value);
+      return JSON.parse(result.value as string);
     } catch {
       return {};
     }
@@ -1074,27 +1074,50 @@ export class Page {
   async get_screenshot(options: {
     path?: string;
     name?: string;
-    asBytes?: boolean;
-    asBase64?: boolean;
+    asBytes?: boolean | 'jpg' | 'jpeg' | 'png' | 'webp';
+    asBase64?: boolean | 'jpg' | 'jpeg' | 'png' | 'webp';
     fullPage?: boolean;
     leftTop?: { x: number; y: number };
     rightBottom?: { x: number; y: number };
   } = {}): Promise<string | Buffer> {
     const { path, name, asBytes, asBase64, fullPage, leftTop, rightBottom } = options;
 
-    const params: Record<string, any> = { format: "png" };
+    let picType: string = 'png';
+
+    if (asBytes) {
+      if (asBytes === true) {
+        picType = 'png';
+      } else {
+        picType = asBytes === 'jpg' ? 'jpeg' : asBytes;
+      }
+    } else if (asBase64) {
+      if (asBase64 === true) {
+        picType = 'png';
+      } else {
+        picType = asBase64 === 'jpg' ? 'jpeg' : asBase64;
+      }
+    } else {
+      picType = 'png';
+    }
+
+    const params: Record<string, any> = { format: picType };
 
     if (fullPage) {
       params.captureBeyondViewport = true;
       const { result } = await this.session.send<{ result: { contentSize: { width: number; height: number } } }>("Page.getLayoutMetrics");
       const { width, height } = result.contentSize;
+      if (width === 0 || height === 0) {
+        throw new Error('Page size is 0, cannot take screenshot.');
+      }
       params.clip = { x: 0, y: 0, width, height, scale: 1 };
-    } else if (leftTop && rightBottom) {
+    } else if (leftTop || rightBottom) {
+      const lt = leftTop || { x: 0, y: 0 };
+      const rb = rightBottom || (await this._getViewportSize());
       params.clip = {
-        x: leftTop.x,
-        y: leftTop.y,
-        width: rightBottom.x - leftTop.x,
-        height: rightBottom.y - leftTop.y,
+        x: lt.x,
+        y: lt.y,
+        width: rb.x - lt.x,
+        height: rb.y - lt.y,
         scale: 1,
       };
     }
@@ -1107,12 +1130,30 @@ export class Page {
 
     if (path) {
       const fs = await import("fs");
-      const filePath = name ? `${path}/${name}` : path;
+      const pathModule = await import("path");
+      let filePath = path;
+      const ext = `.${picType === 'jpeg' ? 'jpg' : picType}`;
+      if (!path.endsWith(ext) && !path.endsWith('.png') && !path.endsWith('.jpg') && !path.endsWith('.jpeg') && !path.endsWith('.webp')) {
+        const fileName = name || `screenshot${ext}`;
+        filePath = pathModule.join(path, fileName);
+      }
       fs.writeFileSync(filePath, buffer);
       return filePath;
     }
 
     return buffer;
+  }
+
+  private async _getViewportSize(): Promise<{ x: number; y: number }> {
+    try {
+      const { result } = await this.session.send<{ result: { value: string } }>("Runtime.evaluate", {
+        expression: "JSON.stringify({x: window.innerWidth, y: window.innerHeight})",
+        returnByValue: true,
+      });
+      return JSON.parse(result.value);
+    } catch {
+      return { x: 1280, y: 720 };
+    }
   }
 
   async get_frame(_frameId: string): Promise<Page> {

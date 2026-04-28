@@ -75,6 +75,15 @@ export class SessionPage {
     return this._responseHeaders;
   }
 
+  get response(): { status: number | null; headers: http.IncomingHttpHeaders | null; body: string | null; url: string | null } {
+    return {
+      status: this._statusCode,
+      headers: this._responseHeaders,
+      body: this._html,
+      url: this._url,
+    };
+  }
+
   /**
    * 返回页面原始数据
    */
@@ -191,12 +200,24 @@ export class SessionPage {
     }
   }
 
-  async get(url: string, extra?: { headers?: Record<string, string> }): Promise<boolean> {
+  async get(url: string, extra?: {
+    headers?: Record<string, string>;
+    params?: Record<string, string>;
+    data?: Record<string, any>;
+    json?: any;
+    cookies?: Array<{ name: string; value: string; domain?: string; path?: string }>;
+    auth?: { username: string; password: string } | [string, string];
+    allow_redirects?: boolean;
+    verify?: boolean;
+    timeout?: number;
+  }): Promise<boolean> {
+    const finalUrl = this._buildUrl(url, extra?.params);
+    const reqExtra = this._buildRequestExtra(extra);
     const { retryTimes, retryInterval } = this._options;
     let attempt = 0;
     while (true) {
       try {
-        const res = await this._request("GET", url, extra);
+        const res = await this._request("GET", finalUrl, reqExtra);
         this._cacheResponse(res);
         return res.statusCode >= 200 && res.statusCode < 400;
       } catch {
@@ -214,13 +235,27 @@ export class SessionPage {
 
   async post(
     url: string,
-    extra?: { headers?: Record<string, string>; body?: string | Buffer } | undefined,
+    extra?: {
+      headers?: Record<string, string>;
+      params?: Record<string, string>;
+      data?: Record<string, any>;
+      json?: any;
+      body?: string | Buffer;
+      cookies?: Array<{ name: string; value: string; domain?: string; path?: string }>;
+      auth?: { username: string; password: string } | [string, string];
+      files?: Record<string, string>;
+      allow_redirects?: boolean;
+      verify?: boolean;
+      timeout?: number;
+    },
   ): Promise<boolean> {
+    const finalUrl = this._buildUrl(url, extra?.params);
+    const reqExtra = this._buildRequestExtra(extra);
     const { retryTimes, retryInterval } = this._options;
     let attempt = 0;
     while (true) {
       try {
-        const res = await this._request("POST", url, extra);
+        const res = await this._request("POST", finalUrl, reqExtra);
         this._cacheResponse(res);
         return res.statusCode >= 200 && res.statusCode < 400;
       } catch {
@@ -309,6 +344,57 @@ export class SessionPage {
     this._url = null;
     this._statusCode = null;
     this._responseHeaders = null;
+  }
+
+  private _buildUrl(url: string, params?: Record<string, string>): string {
+    if (!params || Object.keys(params).length === 0) return url;
+    const urlObj = new URL(url);
+    for (const [key, value] of Object.entries(params)) {
+      urlObj.searchParams.set(key, value);
+    }
+    return urlObj.toString();
+  }
+
+  private _buildRequestExtra(extra?: any): { headers?: Record<string, string>; body?: string | Buffer } {
+    if (!extra) return {};
+    const result: { headers?: Record<string, string>; body?: string | Buffer } = {};
+
+    if (extra.headers) {
+      result.headers = { ...extra.headers };
+    }
+
+    if (extra.auth) {
+      if (!result.headers) result.headers = {};
+      const auth = extra.auth;
+      const username = Array.isArray(auth) ? auth[0] : auth.username;
+      const password = Array.isArray(auth) ? auth[1] : auth.password;
+      const encoded = Buffer.from(`${username}:${password}`).toString('base64');
+      result.headers['Authorization'] = `Basic ${encoded}`;
+    }
+
+    if (extra.cookies && Array.isArray(extra.cookies)) {
+      if (!result.headers) result.headers = {};
+      const cookieStr = extra.cookies.map((c: any) => `${c.name}=${c.value}`).join('; ');
+      result.headers['Cookie'] = cookieStr;
+    }
+
+    if (extra.json !== undefined) {
+      if (!result.headers) result.headers = {};
+      result.headers['Content-Type'] = 'application/json';
+      result.body = typeof extra.json === 'string' ? extra.json : JSON.stringify(extra.json);
+    } else if (extra.data && typeof extra.data === 'object') {
+      if (!result.headers) result.headers = {};
+      result.headers['Content-Type'] = 'application/x-www-form-urlencoded';
+      const params = new URLSearchParams();
+      for (const [key, value] of Object.entries(extra.data)) {
+        params.append(key, String(value));
+      }
+      result.body = params.toString();
+    } else if (extra.body) {
+      result.body = extra.body;
+    }
+
+    return result;
   }
 
   private _cacheResponse(res: HttpResponse): void {

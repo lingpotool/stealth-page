@@ -11,6 +11,8 @@ import {
   JavaScriptError,
   CDPError,
   WaitTimeoutError,
+  InvalidHeaderNameError,
+  MethodNotFoundError,
 } from "../errors";
 import type { CdpErrorInfo } from "./WebSocketCDPSession";
 import { exec } from "child_process";
@@ -51,6 +53,10 @@ export function raise_error(errorItem: CdpErrorInfo | any, method: string = '', 
     r = new CookieFormatError(undefined, method, { cookies: args });
   } else if (error === 'Given expression does not evaluate to a function') {
     r = new JavaScriptError(undefined, method, { JS: args.functionDeclaration });
+  } else if (error === 'Invalid header name') {
+    r = new InvalidHeaderNameError(undefined, method, { headers: args.headers });
+  } else if (error.endsWith("' wasn't found")) {
+    r = new MethodNotFoundError(undefined, method, args);
   } else if (type === 'timeout') {
     r = new WaitTimeoutError(undefined, method, args);
   } else {
@@ -111,4 +117,36 @@ export async function show_or_hide_browser(pid: number, show: boolean = true): P
       else resolve();
     });
   });
+}
+
+export function port_is_using(ip: string, port: number): boolean {
+  const net = require('net');
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.once('error', () => resolve(true));
+    server.once('listening', () => {
+      server.close(() => resolve(false));
+    });
+    server.listen(port, ip);
+  }) as unknown as boolean;
+}
+
+export async function clean_folder(folderPath: string, ignore?: string[]): Promise<void> {
+  const fs = await import('fs');
+  const pathModule = await import('path');
+  if (!fs.existsSync(folderPath)) return;
+
+  const ignoreSet = new Set(ignore || []);
+
+  const entries = fs.readdirSync(folderPath);
+  for (const entry of entries) {
+    if (ignoreSet.has(entry)) continue;
+    const fullPath = pathModule.join(folderPath, entry);
+    const stat = fs.statSync(fullPath);
+    if (stat.isDirectory()) {
+      fs.rmSync(fullPath, { recursive: true, force: true });
+    } else {
+      fs.unlinkSync(fullPath);
+    }
+  }
 }

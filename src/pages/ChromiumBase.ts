@@ -3,6 +3,7 @@ import { Page } from "../core/Page";
 import { Element } from "../core/Element";
 import { NoneElement } from "../core/NoneElement";
 import { SessionElement } from "../core/SessionElement";
+import { Timeout } from "../units/Timeout";
 import { ChromiumPageSetter } from "./ChromiumPageSetter";
 import { ChromiumPageWaiter } from "./ChromiumPageWaiter";
 import { ChromiumPageActions } from "./ChromiumPageActions";
@@ -17,6 +18,7 @@ import { Screencast } from "../units/Screencast";
 import { CookiesSetter } from "../units/CookiesSetter";
 import { WindowSetter } from "../units/WindowSetter";
 import { load } from "cheerio";
+import { get_mhtml, get_pdf } from "../core/web";
 import { parseLocator } from "../core/locator";
 
 export abstract class ChromiumBase {
@@ -35,6 +37,7 @@ export abstract class ChromiumBase {
   protected _cookiesSetter: CookiesSetter | null = null;
   protected _windowSetter: WindowSetter | null = null;
   protected _initScripts: Map<string, string> = new Map();
+  protected _timeouts: Timeout | null = null;
 
   protected constructor(browser: Chromium) {
     this._browser = browser;
@@ -139,12 +142,11 @@ export abstract class ChromiumBase {
     return this._browser.options.timeouts.base;
   }
 
-  get timeouts(): { base: number; page_load: number; script: number } {
-    return {
-      base: this._browser.options.timeouts.base,
-      page_load: this._browser.options.timeouts.pageLoad,
-      script: this._browser.options.timeouts.script,
-    };
+  get timeouts(): Timeout {
+    if (!this._timeouts) {
+      this._timeouts = new Timeout();
+    }
+    return this._timeouts;
   }
 
   get retry_times(): number {
@@ -159,6 +161,10 @@ export abstract class ChromiumBase {
     return this._browser.options.loadMode ?? "normal";
   }
 
+  get load_mode(): 'none' | 'normal' | 'eager' {
+    return (this._browser.options.loadMode ?? "normal") as 'none' | 'normal' | 'eager';
+  }
+
   async user_agent(): Promise<string> {
     await this.init();
     const { result } = await this._page!.cdpSession.send<{ result: { value: string } }>("Runtime.evaluate", {
@@ -168,7 +174,7 @@ export abstract class ChromiumBase {
     return result.value;
   }
 
-  async get(url: string, options?: { retry?: number; interval?: number; timeout?: number }): Promise<boolean> {
+  async get(url: string, options?: { showErrmsg?: boolean; retry?: number; interval?: number; timeout?: number }): Promise<boolean> {
     await this.init();
     const retry = options?.retry ?? this._browser.options.retryTimes ?? 0;
     const interval = options?.interval ?? this._browser.options.retryInterval ?? 1;
@@ -179,6 +185,9 @@ export abstract class ChromiumBase {
         await this._page!.get(url, { timeoutMs });
         return true;
       } catch (e) {
+        if (options?.showErrmsg && i >= retry) {
+          console.error(`Failed to navigate to ${url}:`, e);
+        }
         if (i < retry) {
           await new Promise(r => setTimeout(r, interval * 1000));
         }
@@ -198,15 +207,42 @@ export abstract class ChromiumBase {
 
   async back(steps: number = 1): Promise<void> {
     await this.init();
-    for (let i = 0; i < steps; i++) {
-      await this._page!.back();
-    }
+    await this._forward_or_back(-steps);
   }
 
   async forward(steps: number = 1): Promise<void> {
     await this.init();
-    for (let i = 0; i < steps; i++) {
-      await this._page!.forward();
+    await this._forward_or_back(steps);
+  }
+
+  private async _forward_or_back(steps: number): Promise<void> {
+    if (!this._page) return;
+    const direction = steps > 0 ? 1 : -1;
+    const absSteps = Math.abs(steps);
+    const currentUrl = await this.url();
+
+    for (let i = 0; i < absSteps; i++) {
+      if (direction > 0) {
+        await this._page!.forward();
+      } else {
+        await this._page!.back();
+      }
+      await new Promise(r => setTimeout(r, 50));
+      const newUrl = await this.url();
+      if (newUrl !== currentUrl) return;
+    }
+  }
+
+  async js_ready_state(): Promise<string> {
+    await this.init();
+    try {
+      const { result } = await this._page!.cdpSession.send<{ result: { value: string } }>("Runtime.evaluate", {
+        expression: "document.readyState",
+        returnByValue: true,
+      });
+      return result.value;
+    } catch {
+      return 'unknown';
     }
   }
 
@@ -270,6 +306,10 @@ export abstract class ChromiumBase {
       return result;
     }
     return this._page!.ele(locator);
+  }
+
+  async call(locator: string, index: number = 1, timeout?: number): Promise<Element | NoneElement> {
+    return this.ele(locator, index, timeout);
   }
 
   async eles(locator: string, timeout?: number): Promise<Element[]> {
@@ -500,10 +540,97 @@ export abstract class ChromiumBase {
   async clear_cache(options: { sessionStorage?: boolean; localStorage?: boolean; cache?: boolean; cookies?: boolean } = {}): Promise<void> {
     await this.init();
     const { sessionStorage: ss = true, localStorage: ls = true, cache = true, cookies = true } = options;
-    if (ss) await this._page!.cdpSession.send("Runtime.evaluate", { expression: "sessionStorage.clear()" });
-    if (ls) await this._page!.cdpSession.send("Runtime.evaluate", { expression: "localStorage.clear()" });
-    if (cache) await this._page!.cdpSession.send("Network.clearBrowserCache");
-    if (cookies) await this._page!.cdpSession.send("Network.clearBrowserCookies");
+
+    if (ss && ls && cache && cookies) {
+      try {
+        await this._page!.cdpSession.send("Storage.clearDataForOrigin", { origin: "*", storageTypes: "all" });
+        return;
+      } catch {}
+    }
+
+    if (ss || ls) {
+      try {
+        await this._page!.cdpSession.send("DOMStorage.enable");
+        const { storageKey } = await this._page!.cdpSession.send<{ storageKey: string }>("Storage.getStorageKeyForFrame", {
+          frameId: (this._page as any)._target_id || '',
+        });
+        if (ss) {
+          await this._page!.cdpSession.send("DOMStorage.clear", {
+            storageId: { storageKey, isLocalStorage: false },
+          });
+        }
+        if (ls) {
+          await this._page!.cdpSession.send("DOMStorage.clear", {
+            storageId: { storageKey, isLocalStorage: true },
+          });
+        }
+        await this._page!.cdpSession.send("DOMStorage.disable");
+      } catch {}
+    }
+
+    if (cache) {
+      try {
+        await this._page!.cdpSession.send("Network.clearBrowserCache");
+      } catch {}
+    }
+
+    if (cookies) {
+      try {
+        await this._page!.cdpSession.send("Network.clearBrowserCookies");
+      } catch {}
+    }
+  }
+
+  async find(
+    locators: string[],
+    options: { anyOne?: boolean; firstEle?: boolean; timeout?: number } = {}
+  ): Promise<Map<string, Element | Element[] | NoneElement | null>> {
+    await this.init();
+    const { anyOne = true, firstEle = true, timeout } = options;
+    const actualTimeout = timeout ?? this.timeout;
+    const result = new Map<string, Element | Element[] | NoneElement | null>();
+    for (const loc of locators) {
+      result.set(loc, null);
+    }
+
+    if (actualTimeout === 0) {
+      for (const loc of locators) {
+        try {
+          const ele = firstEle
+            ? await this.ele(loc)
+            : await this.eles(loc);
+          result.set(loc, ele);
+          if (ele && anyOne) return result;
+        } catch {
+          result.set(loc, null);
+        }
+      }
+      return result;
+    }
+
+    const endTime = Date.now() + actualTimeout * 1000;
+    while (Date.now() <= endTime) {
+      for (const loc of locators) {
+        if (result.get(loc)) continue;
+        try {
+          const ele = firstEle
+            ? await this.ele(loc)
+            : await this.eles(loc);
+          result.set(loc, ele);
+          if (ele && anyOne) return result;
+        } catch {
+          result.set(loc, null);
+        }
+      }
+      let allFound = true;
+      for (const loc of locators) {
+        if (!result.get(loc)) { allFound = false; break; }
+      }
+      if (allFound) return result;
+      await new Promise(r => setTimeout(r, 50));
+    }
+
+    return result;
   }
 
   async add_init_js(script: string): Promise<string> {
@@ -511,6 +638,15 @@ export abstract class ChromiumBase {
     const { identifier } = await this._page!.cdpSession.send<{ identifier: string }>("Page.addScriptToEvaluateOnNewDocument", { source: script });
     this._initScripts.set(identifier, script);
     return identifier;
+  }
+
+  async save_page(options: { path?: string; name?: string; asPdf?: boolean; pdfOptions?: Record<string, any> } = {}): Promise<string | Buffer> {
+    await this.init();
+    const { path, name, asPdf = false, pdfOptions } = options;
+    if (asPdf) {
+      return get_pdf(this._page!, path, name, pdfOptions);
+    }
+    return get_mhtml(this._page!, path, name);
   }
 
   async remove_init_js(scriptId?: string): Promise<void> {
@@ -535,6 +671,36 @@ export abstract class ChromiumBase {
     if (!result.objectId) return null;
     const { nodeId } = await this._page!.cdpSession.send<{ nodeId: number }>("DOM.requestNode", { objectId: result.objectId });
     return new Element(this._page!.cdpSession, { nodeId });
+  }
+
+  private _upload_list: string[] | null = null;
+
+  get upload_list(): string[] | null {
+    return this._upload_list;
+  }
+
+  set upload_list(files: string[] | null) {
+    this._upload_list = files;
+    if (files && this._page) {
+      this._page.cdpSession.on('Page.fileChooserOpened', async (params: any) => {
+        if (this._upload_list && params.backendNodeId) {
+          const fileList = params.mode === 'selectMultiple' ? this._upload_list : this._upload_list.slice(0, 1);
+          try {
+            await this._page!.cdpSession.send('DOM.setFileInputFiles', {
+              files: fileList,
+              backendNodeId: params.backendNodeId,
+            });
+          } catch {}
+          this._upload_list = null;
+          try {
+            await this._page!.cdpSession.send('Page.setInterceptFileChooserDialog', { enabled: false });
+          } catch {}
+        }
+      });
+      try {
+        this._page.cdpSession.send('Page.setInterceptFileChooserDialog', { enabled: true }).catch(() => {});
+      } catch {}
+    }
   }
 
   async remove_ele(locOrEle: string | Element): Promise<void> {

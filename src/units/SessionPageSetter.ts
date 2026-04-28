@@ -121,4 +121,43 @@ export class SessionPageSetter {
   max_redirects(times: number | null): void {
     (this._owner.options as any).maxRedirects = times;
   }
+
+  auth(auth: string | [string, string] | Record<string, string>): void {
+    if (Array.isArray(auth)) {
+      (this._owner.options as any).auth = { username: auth[0], password: auth[1] };
+    } else if (typeof auth === 'string') {
+      const decoded = Buffer.from(auth, 'base64').toString('utf-8');
+      const [username, password] = decoded.split(':');
+      (this._owner.options as any).auth = { username, password };
+    } else {
+      (this._owner.options as any).auth = auth;
+    }
+  }
+
+  hooks(hooks: Record<string, Function>): void {
+    (this._owner.options as any).hooks = { ...((this._owner.options as any).hooks || {}), ...hooks };
+  }
+
+  params(params: Record<string, string>): void {
+    (this._owner.options as any).params = { ...((this._owner.options as any).params || {}), ...params };
+  }
+
+  cert(cert: string | Record<string, string>): void {
+    (this._owner.options as any).cert = cert;
+  }
+
+  stream(onOff: boolean): void {
+    (this._owner.options as any).stream = onOff;
+  }
+
+  trust_env(onOff: boolean): void {
+    (this._owner.options as any).trustEnv = onOff;
+  }
+
+  add_adapter(url: string, adapter: any): void {
+    if (!(this._owner.options as any).adapters) {
+      (this._owner.options as any).adapters = {};
+    }
+    (this._owner.options as any).adapters[url] = adapter;
+  }
 }

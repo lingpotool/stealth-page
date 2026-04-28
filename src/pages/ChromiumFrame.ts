@@ -3,6 +3,9 @@ import { Element } from "../core/Element";
 import { NoneElement } from "../core/NoneElement";
 import { FrameScroller } from "../units/FrameScroller";
 import { FrameStates } from "../units/FrameStates";
+import { FrameWaiter } from "../units/FrameWaiter";
+import { FrameListener } from "../units/Listener";
+import { ChromiumFrameSetter } from "../units/ChromiumFrameSetter";
 import { PageRect } from "../units/PageRect";
 import { Settings } from "../core/Settings";
 import { parseLocator } from "../core/locator";
@@ -21,6 +24,9 @@ export class ChromiumFrame {
   private _documentNodeId: number | null = null;
   private _scroller: FrameScroller | null = null;
   private _states: FrameStates | null = null;
+  private _waiter: FrameWaiter | null = null;
+  private _setter: ChromiumFrameSetter | null = null;
+  private _listener: FrameListener | null = null;
   private _rect: PageRect | null = null;
   private _contextId: number | null = null;
   private _is_cross_origin: boolean = false;
@@ -124,6 +130,41 @@ export class ChromiumFrame {
       this._states = new FrameStates(this);
     }
     return this._states;
+  }
+
+  get wait(): FrameWaiter {
+    if (!this._waiter) {
+      this._waiter = new FrameWaiter(this);
+    }
+    return this._waiter;
+  }
+
+  get set(): ChromiumFrameSetter {
+    if (!this._setter) {
+      this._setter = new ChromiumFrameSetter(this);
+    }
+    return this._setter;
+  }
+
+  get listen(): FrameListener {
+    if (!this._listener) {
+      this._listener = new FrameListener({ cdpSession: this.session, tab_id: this._tab_id, _run_cdp: async (cmd: string, params?: any) => this.session.send(cmd, params) });
+    }
+    return this._listener;
+  }
+
+  async active_ele(): Promise<Element | null> {
+    try {
+      const { result } = await this.session.send<{ result: { objectId: any } }>("Runtime.evaluate", {
+        expression: "document.activeElement",
+        contextId: this._contextId || undefined,
+      });
+      if (result?.objectId) {
+        const { node } = await this.session.send<{ node: { nodeId: number; backendNodeId: number } }>("DOM.describeNode", { objectId: result.objectId });
+        return new Element(this.session, { nodeId: node.nodeId, backendNodeId: node.backendNodeId });
+      }
+    } catch {}
+    return null;
   }
 
   get rect(): PageRect {
@@ -409,5 +450,21 @@ export class ChromiumFrame {
 
   async _run_cdp(method: string, params?: Record<string, any>): Promise<any> {
     return this.session.send(method, params);
+  }
+
+  async s_ele(locator: string, index: number = 1): Promise<Element | NoneElement> {
+    return this.ele(locator, index);
+  }
+
+  async s_eles(locator: string): Promise<Element[]> {
+    return this.eles(locator);
+  }
+
+  async remove_attr(name: string): Promise<void> {
+    await this._frameEle.remove_attr(name);
+  }
+
+  async children(locator: string = "", timeout?: number): Promise<Element[]> {
+    return this._frameEle.children(locator, true);
   }
 }

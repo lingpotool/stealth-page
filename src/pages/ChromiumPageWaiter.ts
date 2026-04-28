@@ -1,6 +1,13 @@
 import { ChromiumPage } from "./ChromiumPage";
 import { Element } from "../core/Element";
 import { NoneElement } from "../core/NoneElement";
+import { Settings } from "../core/Settings";
+
+function shouldRaise(raiseErr?: boolean | null): boolean {
+  if (raiseErr === true) return true;
+  if (raiseErr === false) return false;
+  return Settings.raise_when_wait_failed;
+}
 
 export class ChromiumPageWaiter {
   private readonly _page: ChromiumPage;
@@ -33,7 +40,7 @@ export class ChromiumPageWaiter {
     }
   }
 
-  async eles_loaded(locators: string | string[], timeout?: number, anyOne: boolean = false): Promise<boolean> {
+  async eles_loaded(locators: string | string[], timeout?: number, anyOne: boolean = false, raiseErr?: boolean | null): Promise<boolean> {
     const options = this._page.browser.options;
     const timeoutMs = (timeout ?? options.timeouts.base) * 1000;
     const deadline = Date.now() + timeoutMs;
@@ -60,10 +67,15 @@ export class ChromiumPageWaiter {
       await new Promise(resolve => setTimeout(resolve, 100));
     }
 
+    if (shouldRaise(raiseErr)) {
+      const { WaitTimeoutError } = await import("../errors");
+      throw new WaitTimeoutError(`eles_loaded timeout for: ${locatorList.join(', ')}`);
+    }
+
     return false;
   }
 
-  async url_change(text?: string, exclude: boolean = false, timeout?: number): Promise<ChromiumPage | false> {
+  async url_change(text?: string, exclude: boolean = false, timeout?: number, raiseErr?: boolean | null): Promise<ChromiumPage | false> {
     const options = this._page.browser.options;
     const timeoutMs = (timeout ?? options.timeouts.base) * 1000;
     const startUrl = await this._page.url();
@@ -86,10 +98,15 @@ export class ChromiumPageWaiter {
       await new Promise(resolve => setTimeout(resolve, 50));
     }
 
+    if (shouldRaise(raiseErr)) {
+      const { WaitTimeoutError } = await import("../errors");
+      throw new WaitTimeoutError(`url_change timeout, waiting for: ${text}`);
+    }
+
     return false;
   }
 
-  async title_change(text?: string, exclude: boolean = false, timeout?: number): Promise<ChromiumPage | false> {
+  async title_change(text?: string, exclude: boolean = false, timeout?: number, raiseErr?: boolean | null): Promise<ChromiumPage | false> {
     const options = this._page.browser.options;
     const timeoutMs = (timeout ?? options.timeouts.base) * 1000;
     const startTitle = await this._page.title();
@@ -112,19 +129,29 @@ export class ChromiumPageWaiter {
       await new Promise(resolve => setTimeout(resolve, 50));
     }
 
+    if (shouldRaise(raiseErr)) {
+      const { WaitTimeoutError } = await import("../errors");
+      throw new WaitTimeoutError(`title_change timeout, waiting for: ${text}`);
+    }
+
     return false;
   }
 
-  async load_start(timeout?: number): Promise<boolean> {
+  async load_start(timeout?: number, raiseErr?: boolean | null): Promise<boolean> {
     const options = this._page.browser.options;
     const timeoutMs = (timeout ?? options.timeouts.pageLoad) * 1000;
     const page = this._page["_page"];
     if (!page) return false;
 
-    return new Promise<boolean>((resolve) => {
+    return new Promise<boolean>((resolve, reject) => {
       const timer = setTimeout(() => {
         cleanup();
-        resolve(false);
+        if (shouldRaise(raiseErr)) {
+          const { WaitTimeoutError } = require("../errors");
+          reject(new WaitTimeoutError("load_start timeout"));
+        } else {
+          resolve(false);
+        }
       }, timeoutMs);
 
       const handler = () => {
@@ -141,16 +168,21 @@ export class ChromiumPageWaiter {
     });
   }
 
-  async doc_loaded(timeout?: number): Promise<boolean> {
+  async doc_loaded(timeout?: number, raiseErr?: boolean | null): Promise<boolean> {
     const options = this._page.browser.options;
     const timeoutMs = (timeout ?? options.timeouts.pageLoad) * 1000;
     const page = this._page["_page"];
     if (!page) return false;
 
-    return new Promise<boolean>((resolve) => {
+    return new Promise<boolean>((resolve, reject) => {
       const timer = setTimeout(() => {
         cleanup();
-        resolve(false);
+        if (shouldRaise(raiseErr)) {
+          const { WaitTimeoutError } = require("../errors");
+          reject(new WaitTimeoutError("doc_loaded timeout"));
+        } else {
+          resolve(false);
+        }
       }, timeoutMs);
 
       const handler = () => {
@@ -238,7 +270,7 @@ export class ChromiumPageWaiter {
     });
   }
 
-  async new_tab(timeout?: number): Promise<string | false> {
+  async new_tab(timeout?: number, raiseErr?: boolean | null): Promise<string | false> {
     const options = this._page.browser.options;
     const timeoutMs = (timeout ?? options.timeouts.base) * 1000;
     const startTabs = await this._page.get_tabs();
@@ -255,10 +287,15 @@ export class ChromiumPageWaiter {
       await new Promise(resolve => setTimeout(resolve, 100));
     }
 
+    if (shouldRaise(raiseErr)) {
+      const { WaitTimeoutError } = await import("../errors");
+      throw new WaitTimeoutError("new_tab timeout");
+    }
+
     return false;
   }
 
-  async ele_deleted(locator: string, timeout?: number): Promise<boolean> {
+  async ele_deleted(locator: string, timeout?: number, raiseErr?: boolean | null): Promise<boolean> {
     const options = this._page.browser.options;
     const timeoutMs = (timeout ?? options.timeouts.base) * 1000;
     const deadline = Date.now() + timeoutMs;
@@ -270,10 +307,16 @@ export class ChromiumPageWaiter {
       }
       await new Promise(resolve => setTimeout(resolve, 100));
     }
+
+    if (shouldRaise(raiseErr)) {
+      const { WaitTimeoutError } = await import("../errors");
+      throw new WaitTimeoutError(`ele_deleted timeout for: ${locator}`);
+    }
+
     return false;
   }
 
-  async ele_displayed(locator: string, timeout?: number): Promise<boolean> {
+  async ele_displayed(locator: string, timeout?: number, raiseErr?: boolean | null): Promise<boolean> {
     const options = this._page.browser.options;
     const timeoutMs = (timeout ?? options.timeouts.base) * 1000;
     const deadline = Date.now() + timeoutMs;
@@ -288,10 +331,16 @@ export class ChromiumPageWaiter {
       }
       await new Promise(resolve => setTimeout(resolve, 100));
     }
+
+    if (shouldRaise(raiseErr)) {
+      const { WaitTimeoutError } = await import("../errors");
+      throw new WaitTimeoutError(`ele_displayed timeout for: ${locator}`);
+    }
+
     return false;
   }
 
-  async ele_hidden(locator: string, timeout?: number): Promise<boolean> {
+  async ele_hidden(locator: string, timeout?: number, raiseErr?: boolean | null): Promise<boolean> {
     const options = this._page.browser.options;
     const timeoutMs = (timeout ?? options.timeouts.base) * 1000;
     const deadline = Date.now() + timeoutMs;
@@ -307,6 +356,12 @@ export class ChromiumPageWaiter {
       }
       await new Promise(resolve => setTimeout(resolve, 100));
     }
+
+    if (shouldRaise(raiseErr)) {
+      const { WaitTimeoutError } = await import("../errors");
+      throw new WaitTimeoutError(`ele_hidden timeout for: ${locator}`);
+    }
+
     return false;
   }
 

@@ -383,12 +383,37 @@ export class Element {
 
   async text(): Promise<string> {
     const objectId = await this.getObjectId();
-    const { result } = await this._session.send<{ result: { value: string } }>("Runtime.callFunctionOn", {
+    const { result } = await this._session.send<{ result: { value: any } }>("Runtime.callFunctionOn", {
       objectId,
-      functionDeclaration: "function() { return (this && this.innerText) || ''; }",
+      functionDeclaration: `function() {
+        function toSimple(el) {
+          var children = [];
+          for (var i = 0; i < el.childNodes.length; i++) {
+            var node = el.childNodes[i];
+            if (node.nodeType === 3) {
+              var t = node.textContent;
+              if (t) children.push(t);
+            } else if (node.nodeType === 1) {
+              children.push(toSimple(node));
+            }
+          }
+          return { tag: el.tagName ? el.tagName.toLowerCase() : '', children: children };
+        }
+        return toSimple(this);
+      }`,
       returnByValue: true,
     });
-    return result.value;
+
+    if (result?.value && typeof result.value === 'object') {
+      const { get_ele_txt } = await import("./web");
+      return get_ele_txt(result.value);
+    }
+
+    if (typeof result?.value === 'string') {
+      return result.value;
+    }
+
+    return '';
   }
 
   async raw_text(): Promise<string> {
@@ -523,6 +548,24 @@ export class Element {
       returnByValue: true,
     });
     return result.value;
+  }
+
+  async comments(): Promise<string[]> {
+    return this.eles('xpath:.//comment()').then(async (elements) => {
+      const result: string[] = [];
+      for (const el of elements) {
+        try {
+          const objectId = await el.getObjectId();
+          const { result: r } = await this._session.send<{ result: { value: string } }>("Runtime.callFunctionOn", {
+            objectId,
+            functionDeclaration: "function() { return this.textContent || ''; }",
+            returnByValue: true,
+          });
+          if (r.value) result.push(r.value);
+        } catch {}
+      }
+      return result;
+    });
   }
 
   /**
@@ -1727,25 +1770,50 @@ export class Element {
   async get_screenshot(
     path?: string,
     name?: string,
-    asBytes?: boolean,
-    asBase64?: boolean,
+    asBytes?: boolean | 'jpg' | 'jpeg' | 'png' | 'webp',
+    asBase64?: boolean | 'jpg' | 'jpeg' | 'png' | 'webp',
     scrollToCenter: boolean = true
   ): Promise<string | Buffer> {
     if (scrollToCenter) {
-      await this.scroll.to_center();
+      try {
+        await this.scroll.to_center();
+      } catch {}
     }
-    
-    const buffer = await this.screenshot(path ? `${path}/${name || "screenshot.png"}` : undefined);
-    
-    if (asBase64) {
-      return buffer.toString("base64");
-    }
+
+    let picType: string = 'png';
     if (asBytes) {
-      return buffer;
+      picType = asBytes === true ? 'png' : (asBytes === 'jpg' ? 'jpeg' : asBytes);
+    } else if (asBase64) {
+      picType = asBase64 === true ? 'png' : (asBase64 === 'jpg' ? 'jpeg' : asBase64);
     }
+
+    await this._ensureBackendNodeId();
+    const { model } = await this._session.send<{
+      model: { content: number[]; width: number; height: number };
+    }>("DOM.getBoxModel", { backendNodeId: this._backendNodeId });
+
+    const { data } = await this._session.send<{ data: string }>("Page.captureScreenshot", {
+      format: picType,
+      clip: {
+        x: model.content[0],
+        y: model.content[1],
+        width: model.content[4] - model.content[0],
+        height: model.content[5] - model.content[1],
+        scale: 1,
+      },
+    });
+
+    const buffer = Buffer.from(data, "base64");
+
+    if (asBase64) return data;
+    if (asBytes) return buffer;
+
     if (path) {
-      const fullPath = `${path}/${name || "screenshot.png"}`;
       const fs = await import("fs");
+      const pathModule = await import("path");
+      const ext = `.${picType === 'jpeg' ? 'jpg' : picType}`;
+      const fileName = name || `screenshot${ext}`;
+      const fullPath = pathModule.join(path, fileName);
       fs.writeFileSync(fullPath, buffer);
       return fullPath;
     }
@@ -1823,18 +1891,47 @@ export class Element {
     if (!src) {
       throw new Error("Element has no src attribute");
     }
-    
-    // 如果是 Buffer，直接保存
+
+    const fs = await import("fs");
+    const pathModule = await import("path");
+
     if (Buffer.isBuffer(src)) {
-      const fs = await import("fs");
-      const filePath = path ? `${path}/${name || "file"}` : name || "file";
+      const srcAttr = (await this.attr("src")) || "";
+      const urlName = srcAttr.split("/").pop()?.split("?")[0] || "file";
+      const fileName = name || urlName;
+      const dir = path || ".";
+      fs.mkdirSync(dir, { recursive: true });
+      const filePath = pathModule.join(dir, fileName);
       fs.writeFileSync(filePath, src);
       return filePath;
     }
-    
-    // 如果是 URL，需要下载
-    // TODO: 实现 URL 下载
-    return src;
+
+    if (typeof src === "string" && (src.startsWith("http://") || src.startsWith("https://"))) {
+      try {
+        const response = await fetch(src);
+        const buffer = Buffer.from(await response.arrayBuffer());
+        const urlName = src.split("/").pop()?.split("?")[0] || "file";
+        const fileName = name || urlName;
+        const dir = path || ".";
+        fs.mkdirSync(dir, { recursive: true });
+        const filePath = pathModule.join(dir, fileName);
+        fs.writeFileSync(filePath, buffer);
+        return filePath;
+      } catch {
+        return src;
+      }
+    }
+
+    if (typeof src === "string") {
+      const fileName = name || "file";
+      const dir = path || ".";
+      fs.mkdirSync(dir, { recursive: true });
+      const filePath = pathModule.join(dir, fileName);
+      fs.writeFileSync(filePath, src);
+      return filePath;
+    }
+
+    return String(src);
   }
 
   /**

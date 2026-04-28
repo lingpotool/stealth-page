@@ -5,7 +5,7 @@ import * as path from "path";
 /**
  * 录屏模式
  */
-export type ScreencastMode = "video" | "frugal_video" | "imgs" | "frugal_imgs";
+export type ScreencastMode = "video" | "frugal_video" | "imgs" | "frugal_imgs" | "js_video";
 
 /**
  * 录屏页面接口
@@ -24,32 +24,24 @@ export class ScreencastModeSetter {
     this._screencast = screencast;
   }
 
-  /**
-   * 持续视频模式
-   */
   video_mode(): void {
     this._screencast["_mode"] = "video";
   }
 
-  /**
-   * 节俭视频模式（页面有变化时才录制）
-   */
   frugal_video_mode(): void {
     this._screencast["_mode"] = "frugal_video";
   }
 
-  /**
-   * 持续截图模式
-   */
   imgs_mode(): void {
     this._screencast["_mode"] = "imgs";
   }
 
-  /**
-   * 节俭截图模式（页面有变化时才截图）
-   */
   frugal_imgs_mode(): void {
     this._screencast["_mode"] = "frugal_imgs";
+  }
+
+  js_video_mode(): void {
+    this._screencast["_mode"] = "js_video";
   }
 }
 
@@ -125,19 +117,19 @@ export class Screencast {
     this._frameHandler = async (params: any) => {
       const { data, sessionId } = params;
       const frameBuffer = Buffer.from(data, "base64");
-      
+
       if (this._mode === "imgs" || this._mode === "frugal_imgs") {
-        // 图片模式：保存每一帧
+        const framePath = path.join(this._tmpPath!, `frame_${String(this._frameCount).padStart(6, "0")}.png`);
+        fs.writeFileSync(framePath, frameBuffer);
+      } else if (this._mode === "js_video") {
         const framePath = path.join(this._tmpPath!, `frame_${String(this._frameCount).padStart(6, "0")}.png`);
         fs.writeFileSync(framePath, frameBuffer);
       } else {
-        // 视频模式：存储帧数据
         this._frames.push(frameBuffer);
       }
-      
+
       this._frameCount++;
 
-      // 确认帧已处理
       await this._owner.cdpSession.send("Page.screencastFrameAck", {
         sessionId,
       });

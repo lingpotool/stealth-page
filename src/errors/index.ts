@@ -63,3 +63,5 @@ export class UnknownError extends BaseError {}
 export class NavigationError extends BaseError {}
 export class NetworkError extends BaseError {}
 export class DownloadError extends BaseError {}
+export class InvalidHeaderNameError extends BaseError {}
+export class MethodNotFoundError extends BaseError {}

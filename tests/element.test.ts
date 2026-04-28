@@ -77,6 +77,9 @@ describe('Element', () => {
     it('should return innerText', async () => {
       session.setResponseFn('DOM.resolveNode', () => ({ object: { objectId: 'obj-1' } }));
       session.setResponseFn('Runtime.callFunctionOn', (params: any) => {
+        if (params.functionDeclaration.includes('toSimple')) {
+          return { result: { value: { tag: 'div', children: ['Hello World'] } } };
+        }
         if (params.functionDeclaration.includes('innerText')) {
           return { result: { value: 'Hello World' } };
         }
@@ -121,6 +124,9 @@ describe('Element', () => {
     it('should delegate text to text()', async () => {
       session.setResponseFn('DOM.resolveNode', () => ({ object: { objectId: 'obj-1' } }));
       session.setResponseFn('Runtime.callFunctionOn', (params: any) => {
+        if (params.functionDeclaration.includes('toSimple')) {
+          return { result: { value: { tag: 'div', children: ['Hello'] } } };
+        }
         if (params.functionDeclaration.includes('innerText')) {
           return { result: { value: 'Hello' } };
         }

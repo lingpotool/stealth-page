@@ -7,6 +7,7 @@ export interface ConsoleData {
   source: string;
   level: string;
   text: string;
+  body?: any;
   url?: string;
   line?: number;
   column?: number;
@@ -62,6 +63,7 @@ export class Console {
         source: params.source || "console-api",
         level: params.level || params.type || "log",
         text: params.text || "",
+        body: params.args || params.text || null,
         url: params.url,
         line: params.lineNumber,
         column: params.columnNumber,

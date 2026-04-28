@@ -12,6 +12,8 @@ export * from "./core/Settings";
 export * from "./core/Texts";
 export * from "./core/tools";
 export * from "./core/web";
+export * from "./core/privacy_dialog";
+export * from "./core/bridge";
 export * from "./core/cookies";
 export * from "./core/OptionsManager";
 export * from "./core/PortFinder";
@@ -49,6 +51,8 @@ export * from "./units/CookiesSetter";
 export * from "./units/WindowSetter";
 export * from "./units/Pseudo";
 export * from "./units/FrameStates";
+export * from "./units/FrameWaiter";
+export * from "./units/ChromiumFrameSetter";
 export * from "./units/ShadowRootStates";
 export * from "./units/FrameScroller";
 export * from "./units/FrameRect";
@@ -62,6 +66,8 @@ export * from "./units/SessionPageSetter";
 
 export * from "./units/BrowserSetter";
 export * from "./units/BrowserCookiesSetter";
+export * from "./units/SessionCookiesSetter";
+export * from "./units/WebPageCookiesSetter";
 export * from "./units/BrowserWaiter";
 export * from "./units/BrowserStates";
 

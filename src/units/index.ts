@@ -17,6 +17,8 @@ export { Pseudo, PseudoElement } from "./Pseudo";
 
 // Frame 相关
 export { FrameStates, FrameLike } from "./FrameStates";
+export { FrameWaiter } from "./FrameWaiter";
+export { ChromiumFrameSetter } from "./ChromiumFrameSetter";
 export { ShadowRootStates, ShadowRootLike } from "./ShadowRootStates";
 
 // Session 相关
@@ -25,6 +27,8 @@ export { SessionPageSetter } from "./SessionPageSetter";
 // Browser 相关
 export { BrowserSetter } from "./BrowserSetter";
 export { BrowserCookiesSetter, BrowserCookieData } from "./BrowserCookiesSetter";
+export { SessionCookiesSetter } from "./SessionCookiesSetter";
+export { WebPageCookiesSetter } from "./WebPageCookiesSetter";
 export { BrowserWaiter } from "./BrowserWaiter";
 export { BrowserStates } from "./BrowserStates";
 

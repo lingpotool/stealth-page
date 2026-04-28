@@ -4,10 +4,71 @@ export interface DownloadMission {
   fromTab?: string;
   url: string;
   fileName: string;
-  state: 'in_progress' | 'completed' | 'canceled' | 'interrupted' | 'skipped';
+  state: 'in_progress' | 'completed' | 'canceled' | 'interrupted' | 'skipped' | 'running';
   receivedBytes: number;
   totalBytes: number;
   finalPath?: string;
+  folder?: string;
+  _is_done?: boolean;
+  _overwrite?: boolean | null;
+  _mgr?: DownloadManager;
+  _waitResolvers?: Array<(result: string | false) => void>;
+}
+
+export function getMissionRate(mission: DownloadMission): number {
+  if (mission.totalBytes === 0) return 0;
+  return (mission.receivedBytes / mission.totalBytes) * 100;
+}
+
+export function isMissionDone(mission: DownloadMission): boolean {
+  return mission._is_done === true;
+}
+
+export async function cancelMission(mission: DownloadMission): Promise<void> {
+  if (mission._mgr) {
+    await mission._mgr.cancel(mission);
+  } else {
+    mission.state = 'canceled';
+  }
+  if (mission.finalPath) {
+    try {
+      const fs = await import('fs');
+      fs.unlinkSync(mission.finalPath);
+    } catch {}
+  }
+}
+
+export async function waitMission(
+  mission: DownloadMission,
+  timeout?: number,
+  cancelIfTimeout: boolean = true
+): Promise<string | false> {
+  if (mission._is_done) {
+    return mission.finalPath || false;
+  }
+
+  const deadline = timeout !== undefined ? Date.now() + timeout * 1000 : Infinity;
+
+  while (Date.now() < deadline) {
+    if (mission._is_done) {
+      return mission.finalPath || false;
+    }
+    if (mission.state === 'completed') {
+      mission._is_done = true;
+      return mission.finalPath || false;
+    }
+    if (mission.state === 'canceled' || mission.state === 'skipped' || mission.state === 'interrupted') {
+      mission._is_done = true;
+      return false;
+    }
+    await new Promise(r => setTimeout(r, 200));
+  }
+
+  if (cancelIfTimeout && mission._mgr) {
+    await mission._mgr.cancel(mission);
+  }
+
+  return false;
 }
 
 class TabDownloadSettings {
@@ -102,6 +163,7 @@ export class DownloadManager {
       mission.state = state as DownloadMission['state'];
     }
     mission.finalPath = finalPath;
+    mission._is_done = true;
 
     const tabSet = this._tabMissions.get(mission.tabId);
     if (tabSet) tabSet.delete(mission);
@@ -112,6 +174,53 @@ export class DownloadManager {
     }
 
     this._missions.delete(mission.guid);
+
+    if (mission._waitResolvers) {
+      for (const resolver of mission._waitResolvers) {
+        resolver(finalPath || false);
+      }
+      mission._waitResolvers = [];
+    }
+  }
+
+  async cancel(mission: DownloadMission): Promise<void> {
+    mission.state = 'canceled';
+    try {
+      await this._browser._run_cdp('Browser.cancelDownload', { guid: mission.guid });
+    } catch {}
+    if (mission.finalPath) {
+      try {
+        const fs = await import('fs');
+        fs.unlinkSync(mission.finalPath);
+      } catch {}
+    }
+
+    if (mission._waitResolvers) {
+      for (const resolver of mission._waitResolvers) {
+        resolver(false);
+      }
+      mission._waitResolvers = [];
+    }
+  }
+
+  async skip(mission: DownloadMission): Promise<void> {
+    mission.state = 'skipped';
+    try {
+      await this._browser._run_cdp('Browser.cancelDownload', { guid: mission.guid });
+    } catch {}
+
+    if (mission._waitResolvers) {
+      for (const resolver of mission._waitResolvers) {
+        resolver(false);
+      }
+      mission._waitResolvers = [];
+    }
+  }
+
+  clear_tab_info(tabId: string): void {
+    this._tabMissions.delete(tabId);
+    this._flags.delete(tabId);
+    this._waitingTab.delete(tabId);
   }
 
   private _onDownloadWillBegin(params: any): void {
@@ -123,6 +232,8 @@ export class DownloadManager {
       state: 'in_progress',
       receivedBytes: 0,
       totalBytes: 0,
+      _mgr: this,
+      _waitResolvers: [],
     };
 
     this._missions.set(params.guid, mission);
@@ -142,10 +253,13 @@ export class DownloadManager {
 
     if (params.state === 'completed') {
       mission.state = 'completed';
+      this.set_done(mission, 'completed');
     } else if (params.state === 'canceled') {
       mission.state = 'canceled';
+      this.set_done(mission, 'canceled');
     } else if (params.state === 'interrupted') {
       mission.state = 'interrupted';
+      this.set_done(mission, 'interrupted');
     }
   }
 }
