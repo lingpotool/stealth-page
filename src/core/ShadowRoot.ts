@@ -80,6 +80,10 @@ export class ShadowRoot {
     return result.value;
   }
 
+  async _run_js(script: string, ...args: any[]): Promise<any> {
+    return this.run_js(script, ...args);
+  }
+
   async run_async_js(script: string, ...args: any[]): Promise<void> {
     const objectId = await this._getObjectId();
     await this._session.send("Runtime.callFunctionOn", {
@@ -235,6 +239,69 @@ export class ShadowRoot {
 
   async afters(locator: string = "", eleOnly: boolean = true): Promise<Element[]> {
     return this._parentEle.afters(locator, eleOnly);
+  }
+
+  async _find_elements(
+    locator: string,
+    timeout: number,
+    index?: number,
+    relative: boolean = false,
+    raiseErr?: boolean
+  ): Promise<Element | NoneElement | Element[]> {
+    if (index === undefined || index === null) {
+      return this.eles(locator);
+    }
+    if (index === 1) {
+      return this.ele(locator, 1, timeout);
+    }
+    const all = await this.eles(locator);
+    const idx = index > 0 ? index - 1 : all.length + index;
+    return all[idx] ?? new NoneElement("ele", { locator, index });
+  }
+
+  async _get_node_id(objId?: string): Promise<number> {
+    if (this._nodeId && this._nodeId > 0) return this._nodeId;
+    const oid = objId ?? this._objectId;
+    if (oid) {
+      try {
+        const { nodeId } = await this._session.send<{ nodeId: number }>("DOM.requestNode", { objectId: oid });
+        if (nodeId && nodeId > 0) {
+          this._nodeId = nodeId;
+          return nodeId;
+        }
+      } catch {}
+    }
+    return 0;
+  }
+
+  async _get_obj_id(backendId?: number): Promise<string> {
+    if (this._objectId) return this._objectId;
+    const bid = backendId ?? this._backendNodeId;
+    if (bid && bid > 0) {
+      try {
+        const { object } = await this._session.send<{ object: { objectId: string } }>("DOM.resolveNode", { backendNodeId: bid });
+        if (object?.objectId) {
+          this._objectId = object.objectId;
+          return object.objectId;
+        }
+      } catch {}
+    }
+    return '';
+  }
+
+  async _get_backend_id(nodeId?: number): Promise<number> {
+    if (this._backendNodeId && this._backendNodeId > 0) return this._backendNodeId;
+    const nid = nodeId ?? this._nodeId;
+    if (nid && nid > 0) {
+      try {
+        const { node } = await this._session.send<{ node: { backendNodeId: number } }>("DOM.describeNode", { nodeId: nid });
+        if (node?.backendNodeId && node.backendNodeId > 0) {
+          this._backendNodeId = node.backendNodeId;
+          return node.backendNodeId;
+        }
+      } catch {}
+    }
+    return 0;
   }
 
   toString(): string {

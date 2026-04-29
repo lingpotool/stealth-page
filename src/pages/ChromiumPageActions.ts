@@ -111,13 +111,13 @@ export class ChromiumPageActions {
   async move(x: number, y: number): Promise<this> {
     const page = this._page["_page"];
     if (page) {
-      await page.cdpSession.send("Input.dispatchMouseEvent", {
+      const params: Record<string, any> = {
         type: "mouseMoved",
-        button: this._holding,
-        x,
-        y,
-        modifiers: this._modifier,
-      });
+        x: Number(x),
+        y: Number(y),
+      };
+      if (this._modifier) params.modifiers = this._modifier;
+      await page.cdpSession.send("Input.dispatchMouseEvent", params);
       this._currX = x;
       this._currY = y;
     }

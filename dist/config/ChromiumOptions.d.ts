@@ -14,11 +14,13 @@ export interface ChromiumOptionsInit {
     flags?: Record<string, any>;
     timeouts?: ChromiumTimeouts;
     uploadFiles?: string[];
+    user?: string;
+    systemUserPath?: boolean;
+    existingOnly?: boolean;
+    autoPort?: boolean;
+    headless?: boolean;
+    newEnv?: boolean;
 }
-/**
- * Node 版的 ChromiumOptions，对齐 DrissionPage.ChromiumOptions 的主要字段和方法。
- * 目前只定义结构，具体行为在后续实现。
- */
 export declare class ChromiumOptions {
     browserPath: string;
     userDataPath?: string;
@@ -37,14 +39,26 @@ export declare class ChromiumOptions {
     downloadFileName: string | null;
     downloadFileSuffix: string | null;
     whenDownloadFileExists: string;
-    constructor(init?: ChromiumOptionsInit);
+    user: string;
+    system_user_path: boolean;
+    is_existing_only: boolean;
+    is_auto_port: boolean;
+    is_headless: boolean;
+    prefs: Record<string, any>;
+    private _prefs_to_del;
+    private _new_env;
+    private _ua_set;
+    private _clear_file_flags;
+    constructor(init?: ChromiumOptionsInit | string);
+    private _load_from_manager;
+    get ws_address(): string;
     set_timeouts(base: number, pageLoad?: number, script?: number): this;
     set_paths(options: {
         downloadPath?: string;
         tmpPath?: string | null;
         userDataPath?: string;
     }): this;
-    set_argument(arg: string): this;
+    set_argument(arg: string, value?: string): this;
     remove_argument(arg: string): this;
     headless(enabled?: boolean): this;
     incognito(enabled?: boolean): this;
@@ -54,15 +68,24 @@ export declare class ChromiumOptions {
     set_browser_path(path: string): this;
     set_address(address: string): this;
     set_user_data_path(path: string): this;
-    /**
-     * 获取当前代理设置
-     */
+    set_user(user: string): this;
+    set_pref(key: string, value: any): this;
+    remove_pref(key: string): this;
+    clear_flags(): this;
+    clear_arguments(): this;
+    clear_prefs(): this;
+    set_load_mode(mode: string): this;
+    set_local_port(port: number): this;
+    set_cache_path(path: string): this;
+    auto_port(scope?: [number, number] | boolean | null): this;
+    existing_only(enabled?: boolean): this;
+    ignore_certificate_errors(enabled?: boolean): this;
+    set_user_agent(ua: string): this;
+    new_env(enabled?: boolean): this;
+    save(filePath?: string | null): string;
+    save_to_default(): string;
+    remove_extensions(): this;
     get proxy(): string;
-    /**
-     * 设置代理（对齐 DrissionPage ChromiumOptions.set_proxy）
-     * 通过 --proxy-server 启动参数设置
-     * @param proxy 代理地址，如 "http://127.0.0.1:8080"
-     */
     set_proxy(proxy: string): this;
     add_extension(path: string): this;
     remove_extension(path: string): this;

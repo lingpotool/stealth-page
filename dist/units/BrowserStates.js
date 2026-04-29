@@ -28,6 +28,9 @@ class BrowserStates {
     get is_incognito() {
         return this._browser.options.arguments.some(arg => arg.includes("--incognito"));
     }
+    get is_existed() {
+        return !!this._browser._process_id;
+    }
     /**
      * 返回标签页数量
      */

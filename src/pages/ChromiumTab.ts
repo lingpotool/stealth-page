@@ -40,43 +40,17 @@ export class ChromiumTab extends ChromiumBase {
     await this._browser.activate_tab(this._tabId);
   }
 
-  async get_screenshot(options: {
-    path?: string;
-    name?: string;
-    asBytes?: boolean;
-    asBase64?: boolean;
-    fullPage?: boolean;
-    leftTop?: [number, number];
-    rightBottom?: [number, number];
-  } = {}): Promise<string | Buffer> {
+  async get_screenshot(
+    path?: string,
+    name?: string,
+    asBytes?: boolean | 'jpg' | 'jpeg' | 'png' | 'webp',
+    asBase64?: boolean | 'jpg' | 'jpeg' | 'png' | 'webp',
+    fullPage: boolean = false,
+    leftTop?: [number, number],
+    rightBottom?: [number, number]
+  ): Promise<string | Buffer> {
     await this.init();
-    const { path, name, asBytes, asBase64, fullPage, leftTop, rightBottom } = options;
-
-    let clip: any = undefined;
-    if (leftTop && rightBottom) {
-      clip = { x: leftTop[0], y: leftTop[1], width: rightBottom[0] - leftTop[0], height: rightBottom[1] - leftTop[1], scale: 1 };
-    } else if (fullPage) {
-      const { result } = await this._page!.cdpSession.send<{ result: { value: any } }>("Runtime.evaluate", {
-        expression: `({ width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight })`,
-        returnByValue: true,
-      });
-      clip = { x: 0, y: 0, width: result.value.width, height: result.value.height, scale: 1 };
-    }
-
-    const { data } = await this._page!.cdpSession.send<{ data: string }>("Page.captureScreenshot", {
-      format: "png", clip, captureBeyondViewport: fullPage,
-    });
-    const buffer = Buffer.from(data, "base64");
-
-    if (asBase64) return data;
-    if (asBytes) return buffer;
-    if (path || name) {
-      const fs = await import("fs");
-      const filePath = path ? `${path}/${name || "screenshot.png"}` : name || "screenshot.png";
-      fs.writeFileSync(filePath, buffer);
-      return filePath;
-    }
-    return buffer;
+    return this._get_screenshot(path, name, asBytes, asBase64, fullPage, leftTop, rightBottom);
   }
 
   async get_frame_elements(locator?: string): Promise<Element[]> {
@@ -85,5 +59,9 @@ export class ChromiumTab extends ChromiumBase {
       return this.eles(locator);
     }
     return this.eles("iframe, frame");
+  }
+
+  _on_disconnect(): void {
+    this._page = null;
   }
 }

@@ -87,6 +87,8 @@ export declare class ChromiumPageSetter {
      * @param mode 'rename' | 'overwrite' | 'skip' | 'cancel'
      */
     when_download_file_exists(mode: string): this;
+    none_element_value(value?: any, returnSelf?: boolean): this;
+    none_element_raise(raise?: boolean): this;
 }
 /**
  * 滚动设置类

@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ChromiumPageActions = void 0;
 const Element_1 = require("../core/Element");
+const NoneElement_1 = require("../core/NoneElement");
 const Keys_1 = require("../core/Keys");
 /**
  * 动作链类，对应 DrissionPage 的 Actions
@@ -53,7 +54,7 @@ class ChromiumPageActions {
         }
         else if (typeof eleOrLoc === "string") {
             const ele = await this._page.ele(eleOrLoc);
-            if (!ele)
+            if (ele instanceof NoneElement_1.NoneElement)
                 throw new Error(`Element not found: ${eleOrLoc}`);
             await ele.scroll_into_view();
             if (midPoint) {
@@ -110,13 +111,14 @@ class ChromiumPageActions {
     async move(x, y) {
         const page = this._page["_page"];
         if (page) {
-            await page.cdpSession.send("Input.dispatchMouseEvent", {
+            const params = {
                 type: "mouseMoved",
-                button: this._holding,
-                x,
-                y,
-                modifiers: this._modifier,
-            });
+                x: Number(x),
+                y: Number(y),
+            };
+            if (this._modifier)
+                params.modifiers = this._modifier;
+            await page.cdpSession.send("Input.dispatchMouseEvent", params);
             this._currX = x;
             this._currY = y;
         }
@@ -337,18 +339,27 @@ class ChromiumPageActions {
         const page = this._page["_page"];
         if (!page)
             return this;
+        if (page._has_alert)
+            return this;
         // 检查是否是修饰键
         if (key in Keys_1.modifierBit) {
             this._modifier |= Keys_1.modifierBit[key];
         }
         const def = Keys_1.keyDefinitions[key] || { key, keyCode: 0, code: "" };
-        await page.cdpSession.send("Input.dispatchKeyEvent", {
-            type: "keyDown",
-            key: def.key,
-            code: def.code,
-            windowsVirtualKeyCode: def.keyCode,
-            modifiers: this._modifier,
-        });
+        try {
+            await page.cdpSession.send("Input.dispatchKeyEvent", {
+                type: "keyDown",
+                key: def.key,
+                code: def.code,
+                windowsVirtualKeyCode: def.keyCode,
+                modifiers: this._modifier,
+            });
+        }
+        catch (e) {
+            if (e?.type === 'alert_exists')
+                return this;
+            throw e;
+        }
         return this;
     }
     /**
@@ -358,18 +369,27 @@ class ChromiumPageActions {
         const page = this._page["_page"];
         if (!page)
             return this;
+        if (page._has_alert)
+            return this;
         // 检查是否是修饰键
         if (key in Keys_1.modifierBit) {
             this._modifier &= ~Keys_1.modifierBit[key];
         }
         const def = Keys_1.keyDefinitions[key] || { key, keyCode: 0, code: "" };
-        await page.cdpSession.send("Input.dispatchKeyEvent", {
-            type: "keyUp",
-            key: def.key,
-            code: def.code,
-            windowsVirtualKeyCode: def.keyCode,
-            modifiers: this._modifier,
-        });
+        try {
+            await page.cdpSession.send("Input.dispatchKeyEvent", {
+                type: "keyUp",
+                key: def.key,
+                code: def.code,
+                windowsVirtualKeyCode: def.keyCode,
+                modifiers: this._modifier,
+            });
+        }
+        catch (e) {
+            if (e?.type === 'alert_exists')
+                return this;
+            throw e;
+        }
         return this;
     }
     /**

@@ -333,6 +333,126 @@ export class Element {
     return this.run_js(script, ...args);
   }
 
+  async _run_js(script: string, ...args: any[]): Promise<any> {
+    return this.run_js(script, ...args);
+  }
+
+  async _get_ele_path(xpathMode: boolean = true): Promise<string> {
+    if (xpathMode) {
+      return this.xpath();
+    }
+    return this.css_path();
+  }
+
+  async _get_obj_id(nodeId?: number, backendId?: number): Promise<string> {
+    if (this._objectId) return this._objectId;
+    const nid = nodeId ?? this._nodeId;
+    if (nid && nid > 0) {
+      try {
+        const { object } = await this._session.send<{ object: { objectId: string } }>("DOM.resolveNode", { nodeId: nid });
+        if (object?.objectId) {
+          this._objectId = object.objectId;
+          return object.objectId;
+        }
+      } catch {}
+    }
+    const bid = backendId ?? this._backendNodeId;
+    if (bid && bid > 0) {
+      try {
+        const { object } = await this._session.send<{ object: { objectId: string } }>("DOM.resolveNode", { backendNodeId: bid });
+        if (object?.objectId) {
+          this._objectId = object.objectId;
+          return object.objectId;
+        }
+      } catch {}
+    }
+    return '';
+  }
+
+  async _get_node_id(objId?: string, backendId?: number): Promise<number> {
+    if (this._nodeId && this._nodeId > 0) return this._nodeId;
+    const oid = objId ?? this._objectId;
+    if (oid) {
+      try {
+        const { nodeId } = await this._session.send<{ nodeId: number }>("DOM.requestNode", { objectId: oid });
+        if (nodeId && nodeId > 0) {
+          this._nodeId = nodeId;
+          return nodeId;
+        }
+      } catch {}
+    }
+    const bid = backendId ?? this._backendNodeId;
+    if (bid && bid > 0) {
+      try {
+        const { node } = await this._session.send<{ node: { nodeId: number } }>("DOM.describeNode", { backendNodeId: bid });
+        if (node?.nodeId && node.nodeId > 0) {
+          this._nodeId = node.nodeId;
+          return node.nodeId;
+        }
+      } catch {}
+    }
+    return 0;
+  }
+
+  async _get_backend_id(nodeId?: number): Promise<number> {
+    if (this._backendNodeId && this._backendNodeId > 0) return this._backendNodeId;
+    const nid = nodeId ?? this._nodeId;
+    if (nid && nid > 0) {
+      try {
+        const { node } = await this._session.send<{ node: { backendNodeId: number } }>("DOM.describeNode", { nodeId: nid });
+        if (node?.backendNodeId && node.backendNodeId > 0) {
+          this._backendNodeId = node.backendNodeId;
+          return node.backendNodeId;
+        }
+      } catch {}
+    }
+    return 0;
+  }
+
+  async _refresh_id(): Promise<void> {
+    if (this._backendNodeId && this._backendNodeId > 0) {
+      try {
+        const { node } = await this._session.send<{ node: { nodeId: number; backendNodeId: number } }>("DOM.describeNode", { backendNodeId: this._backendNodeId });
+        this._nodeId = node.nodeId;
+        this._backendNodeId = node.backendNodeId;
+        this._objectId = null;
+      } catch {}
+    }
+  }
+
+  async _find_elements(
+    locator: string,
+    timeout: number,
+    index?: number,
+    relative: boolean = false,
+    raiseErr?: boolean
+  ): Promise<Element | NoneElement | Element[]> {
+    if (index === undefined || index === null) {
+      return this.eles(locator);
+    }
+    if (index === 1) {
+      const el = await this.ele(locator, 1);
+      if (el instanceof NoneElement) {
+        if (raiseErr ?? NoneElement.raiseWhenNotFound) {
+          const { ElementNotFoundError } = await import("../errors");
+          throw new ElementNotFoundError(locator);
+        }
+      }
+      return el;
+    }
+    const all = await this.eles(locator);
+    const idx = index > 0 ? index - 1 : all.length + index;
+    const result = all[idx] ?? null;
+    if (!result) {
+      if (raiseErr ?? NoneElement.raiseWhenNotFound) {
+        const { ElementNotFoundError } = await import("../errors");
+        throw new ElementNotFoundError(locator);
+      }
+      return new NoneElement("ele", { locator, index });
+    }
+    return result;
+  }
+
   // ========== 基础属性 ==========
 
   /**
@@ -1945,6 +2065,10 @@ export class Element {
       backendNodeId: this._backendNodeId,
     });
     return this;
+  }
+
+  async _set_file_input(files: string | string[]): Promise<void> {
+    await this.set_file_input(files);
   }
 
   // ========== 方向定位方法 ==========

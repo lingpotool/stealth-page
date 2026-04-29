@@ -1,17 +1,51 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.BrowserWaiter = void 0;
-/**
- * 浏览器等待类
- * 对应 DrissionPage.BrowserWaiter
- */
+const Settings_1 = require("../core/Settings");
+function shouldRaise(raiseErr) {
+    if (raiseErr === true)
+        return true;
+    if (raiseErr === false)
+        return false;
+    return Settings_1.Settings.raise_when_wait_failed;
+}
 class BrowserWaiter {
     constructor(browser) {
         this._browser = browser;
     }
-    /**
-     * 等待若干秒
-     */
     async wait(second, scope) {
         const waitTime = scope !== undefined
             ? second + Math.random() * (scope - second)
@@ -19,16 +53,11 @@ class BrowserWaiter {
         await new Promise(resolve => setTimeout(resolve, waitTime * 1000));
         return this._browser;
     }
-    /**
-     * 等待新标签页出现
-     */
-    async new_tab(timeout, currTab) {
+    async new_tab(timeout, currTab, raiseErr) {
         const timeoutMs = (timeout ?? this._browser.options.timeouts.base) * 1000;
         const startTime = Date.now();
-        // 获取当前标签页列表
         const initialTabs = await this._browser.get_tabs();
         const initialIds = new Set(initialTabs.map(t => t.id));
-        // 如果指定了当前标签页，确保它在列表中
         if (currTab && !initialIds.has(currTab)) {
             initialIds.add(currTab);
         }
@@ -41,14 +70,13 @@ class BrowserWaiter {
             }
             await new Promise(resolve => setTimeout(resolve, 100));
         }
+        if (shouldRaise(raiseErr)) {
+            const { WaitTimeoutError } = await Promise.resolve().then(() => __importStar(require("../errors")));
+            throw new WaitTimeoutError("new_tab timeout");
+        }
         return false;
     }
-    /**
-     * 等待浏览器下载开始
-     */
     async download_begin(timeout, cancelIt = false) {
-        // 这需要监听 Browser.downloadWillBegin 事件
-        // 简化实现
         const timeoutMs = (timeout ?? this._browser.options.timeouts.base) * 1000;
         return new Promise((resolve) => {
             let resolved = false;
@@ -65,7 +93,6 @@ class BrowserWaiter {
                 }
             };
             this._browser.cdpSession.on("Browser.downloadWillBegin", handler);
-            // 启用下载事件
             this._browser.cdpSession.send("Browser.setDownloadBehavior", {
                 behavior: "allowAndName",
                 downloadPath: this._browser.options.downloadPath,
@@ -80,20 +107,11 @@ class BrowserWaiter {
             }, timeoutMs);
         });
     }
-    /**
-     * 等待所有下载任务结束
-     */
     async downloads_done(timeout, cancelIfTimeout = true) {
-        // 简化实现：等待一段时间
         const timeoutMs = timeout ? timeout * 1000 : Infinity;
         const startTime = Date.now();
-        // 这里需要跟踪所有下载任务的状态
-        // 简化版本只是等待
         while (Date.now() - startTime < timeoutMs) {
-            // 检查是否有活动的下载
-            // 由于 CDP 没有直接的方法获取下载列表，这里简化处理
             await new Promise(resolve => setTimeout(resolve, 500));
-            // 假设没有活动下载
             return true;
         }
         return !cancelIfTimeout;

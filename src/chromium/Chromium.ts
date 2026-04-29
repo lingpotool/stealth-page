@@ -424,6 +424,11 @@ export class Chromium {
     };
   }
 
+  async version(): Promise<string> {
+    const info = await this.get_version();
+    return info.browser;
+  }
+
   async tabs_count(): Promise<number> {
     const tabs = await this.get_tabs();
     return tabs.length;

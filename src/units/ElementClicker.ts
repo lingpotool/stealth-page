@@ -503,7 +503,7 @@ export class ElementClicker {
           clickCount: 1,
         });
       } catch (e: any) {
-        if (e?.type === 'alert_exists') break;
+        if (e?.type === 'alert_exists' || e?.type === 'timeout') break;
         throw e;
       }
       try {
@@ -515,7 +515,7 @@ export class ElementClicker {
           clickCount: 1,
         });
       } catch (e: any) {
-        if (e?.type === 'alert_exists') break;
+        if (e?.type === 'alert_exists' || e?.type === 'timeout') break;
         throw e;
       }
     }

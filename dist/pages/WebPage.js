@@ -3,11 +3,34 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.WebPage = void 0;
 const ChromiumPage_1 = require("./ChromiumPage");
 const SessionPage_1 = require("./SessionPage");
+const WebPageSetter_1 = require("../units/WebPageSetter");
+const WebPageWaiter_1 = require("../units/WebPageWaiter");
 /**
  * Node 版 WebPage，对应 DrissionPage.WebPage。
  * 通过 mode 切换浏览器驱动模式(d)和会话模式(s)。
  */
 class WebPage {
+    get set() {
+        if (!this._setter) {
+            this._setter = new WebPageSetter_1.WebPageSetter(this);
+        }
+        return this._setter;
+    }
+    get web_wait() {
+        if (!this._waiter) {
+            this._waiter = new WebPageWaiter_1.WebPageWaiter(this);
+        }
+        return this._waiter;
+    }
+    get response() {
+        return this._sessionPage.response;
+    }
+    get chromium_page() {
+        return this._chromiumPage;
+    }
+    get session_page() {
+        return this._sessionPage;
+    }
     get wait() {
         if (this._mode === "d") {
             return this._chromiumPage.wait;
@@ -83,6 +106,8 @@ class WebPage {
         return null;
     }
     constructor(mode = "d", _timeout, chromiumOptions, sessionOrOptions) {
+        this._setter = null;
+        this._waiter = null;
         this._mode = mode.toLowerCase();
         this._chromiumPage = new ChromiumPage_1.ChromiumPage(crmOrDefault(chromiumOptions));
         this._sessionPage = new SessionPage_1.SessionPage(sessionOrOptions);
@@ -90,24 +115,28 @@ class WebPage {
     get mode() {
         return this._mode;
     }
-    change_mode(mode) {
+    change_mode(mode, go = true, copyCookies = true) {
+        const oldMode = this._mode;
         if (!mode) {
             this._mode = this._mode === "d" ? "s" : "d";
-            return;
         }
-        this._mode = mode;
+        else {
+            this._mode = mode;
+        }
+        if (copyCookies && oldMode !== this._mode) {
+            if (this._mode === "s" && oldMode === "d") {
+                this.cookies_to_session(true).catch(() => { });
+            }
+            else if (this._mode === "d" && oldMode === "s") {
+                this.cookies_to_browser().catch(() => { });
+            }
+        }
     }
     get chromium_options() {
         return this._chromiumPage.browser.options;
     }
     get session_options() {
         return this._sessionPage.options;
-    }
-    get set() {
-        if (this._mode === "d") {
-            return this._chromiumPage.set;
-        }
-        return null;
     }
     get actions() {
         if (this._mode === "d") {
@@ -244,13 +273,13 @@ class WebPage {
     }
     async cookies() {
         if (this._mode === "d") {
-            return this._chromiumPage.cookies;
+            return this._chromiumPage.cookies();
         }
         return this._sessionPage.cookies();
     }
-    async new_tab(url) {
+    async new_tab(url, options) {
         if (this._mode === "d") {
-            return this._chromiumPage.new_tab(url);
+            return this._chromiumPage.new_tab(url, options);
         }
         throw new Error("WebPage new_tab() is only available in driver mode.");
     }
@@ -258,6 +287,12 @@ class WebPage {
         if (this._mode === "d") {
             return this._chromiumPage.close();
         }
+    }
+    async close_driver() {
+        await this._chromiumPage.quit();
+    }
+    close_session() {
+        this._sessionPage.close();
     }
     async run_js(script) {
         if (this._mode === "d") {
@@ -293,13 +328,13 @@ class WebPage {
         if (this._mode === "d") {
             return this._chromiumPage.tabs_count;
         }
-        return 0;
+        return Promise.resolve(0);
     }
     get tab_ids() {
         if (this._mode === "d") {
             return this._chromiumPage.tab_ids;
         }
-        return [];
+        return Promise.resolve([]);
     }
     async scroll_to(x, y) {
         if (this._mode === "d") {
@@ -348,9 +383,9 @@ class WebPage {
         }
         return null;
     }
-    async activate_tab(tabId) {
+    async activate_tab(tabIdOrIndex) {
         if (this._mode === "d") {
-            return this._chromiumPage.activate_tab(tabId);
+            return this._chromiumPage.activate_tab(tabIdOrIndex);
         }
     }
     async close_tab(tabId) {
@@ -406,7 +441,7 @@ class WebPage {
             throw new Error("cookies_to_session() requires driver mode.");
         }
         // 获取浏览器 cookies
-        const browserCookies = await this._chromiumPage.cookies;
+        const browserCookies = await this._chromiumPage.cookies();
         // 设置到 session
         await this._sessionPage.set_cookies(browserCookies.map((c) => ({
             name: c.name,

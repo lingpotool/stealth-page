@@ -3,7 +3,10 @@ import { ChromiumTab } from "./ChromiumTab";
 import { SessionPage } from "./SessionPage";
 import { SessionOptions } from "../config/SessionOptions";
 import { Element } from "../core/Element";
+import { NoneElement } from "../core/NoneElement";
 import { SessionElement } from "../core/SessionElement";
+import { MixTabSetter } from "../units/MixTabSetter";
+import { MixTabWaiter } from "../units/MixTabWaiter";
 export type MixTabMode = "d" | "s";
 /**
  * MixTab - 混合模式标签页
@@ -13,7 +16,17 @@ export declare class MixTab extends ChromiumTab {
     private _mode;
     private _sessionPage;
     private _sessionUrl;
+    private _mixSetter;
+    private _mixWaiter;
     constructor(browser: Chromium, tabId: string, sessionOptions?: SessionOptions);
+    get mix_set(): MixTabSetter;
+    get mix_wait(): MixTabWaiter;
+    get response(): {
+        status: number | null;
+        headers: any;
+        body: string | null;
+        url: string | null;
+    };
     get mode(): MixTabMode;
     /**
      * 切换模式
@@ -76,7 +89,7 @@ export declare class MixTab extends ChromiumTab {
     title(): Promise<string>;
     url(): Promise<string>;
     cookies(allDomains?: boolean, allInfo?: boolean): Promise<any[]>;
-    ele(locator: string, index?: number, timeout?: number): Promise<Element | null>;
+    ele(locator: string, index?: number, timeout?: number): Promise<Element | NoneElement>;
     eles(locator: string, timeout?: number): Promise<Element[]>;
     /**
      * 以 SessionElement 形式返回元素
@@ -85,6 +98,9 @@ export declare class MixTab extends ChromiumTab {
     s_ele(locator: string, index?: number, timeout?: number): Promise<SessionElement | null>;
     s_eles(locator: string, timeout?: number): Promise<SessionElement[]>;
     get session(): SessionPage;
+    get _browser_url(): string;
+    get _session_url(): string | null;
+    _find_elements(locator: string | Element, timeout: number, index?: number, relative?: boolean, raiseErr?: boolean): Promise<Element | NoneElement | Element[]>;
     get response_headers(): any;
     get status(): number | null;
     /**

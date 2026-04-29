@@ -1,8 +1,45 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.MixTab = void 0;
 const ChromiumTab_1 = require("./ChromiumTab");
 const SessionPage_1 = require("./SessionPage");
+const Element_1 = require("../core/Element");
+const NoneElement_1 = require("../core/NoneElement");
+const MixTabSetter_1 = require("../units/MixTabSetter");
+const MixTabWaiter_1 = require("../units/MixTabWaiter");
 /**
  * MixTab - 混合模式标签页
  * 对应 DrissionPage.MixTab，支持 d 模式（浏览器）和 s 模式（Session）切换
@@ -12,9 +49,26 @@ class MixTab extends ChromiumTab_1.ChromiumTab {
         super(browser, tabId);
         this._mode = "d";
         this._sessionUrl = null;
+        this._mixSetter = null;
+        this._mixWaiter = null;
         this._sessionPage = new SessionPage_1.SessionPage(sessionOptions);
     }
     // ========== 模式相关 ==========
+    get mix_set() {
+        if (!this._mixSetter) {
+            this._mixSetter = new MixTabSetter_1.MixTabSetter(this);
+        }
+        return this._mixSetter;
+    }
+    get mix_wait() {
+        if (!this._mixWaiter) {
+            this._mixWaiter = new MixTabWaiter_1.MixTabWaiter(this);
+        }
+        return this._mixWaiter;
+    }
+    get response() {
+        return this._sessionPage.response;
+    }
     get mode() {
         return this._mode;
     }
@@ -148,8 +202,6 @@ class MixTab extends ChromiumTab_1.ChromiumTab {
         if (this._mode === "d") {
             return super.ele(locator, index, timeout);
         }
-        // s 模式下返回 SessionElement，但为了类型兼容，这里返回 Element | null
-        // 实际使用时可以通过 s_ele 获取 SessionElement
         const sessionEle = await this._sessionPage.ele(locator, index, timeout);
         return sessionEle;
     }
@@ -180,6 +232,40 @@ class MixTab extends ChromiumTab_1.ChromiumTab {
     // ========== Session 特有属性 ==========
     get session() {
         return this._sessionPage;
+    }
+    get _browser_url() {
+        return this._browser.options.address;
+    }
+    get _session_url() {
+        return this._sessionUrl;
+    }
+    async _find_elements(locator, timeout, index, relative = false, raiseErr) {
+        if (locator instanceof Element_1.Element)
+            return locator;
+        if (index === undefined || index === null) {
+            return this.eles(locator, timeout);
+        }
+        if (index === 1) {
+            const el = await this.ele(locator, 1, timeout);
+            if (el instanceof NoneElement_1.NoneElement) {
+                if (raiseErr ?? NoneElement_1.NoneElement.raiseWhenNotFound) {
+                    const { ElementNotFoundError } = await Promise.resolve().then(() => __importStar(require("../errors")));
+                    throw new ElementNotFoundError(locator);
+                }
+            }
+            return el;
+        }
+        const all = await this.eles(locator, timeout);
+        const idx = index > 0 ? index - 1 : all.length + index;
+        const result = all[idx] ?? null;
+        if (!result) {
+            if (raiseErr ?? NoneElement_1.NoneElement.raiseWhenNotFound) {
+                const { ElementNotFoundError } = await Promise.resolve().then(() => __importStar(require("../errors")));
+                throw new ElementNotFoundError(locator);
+            }
+            return new NoneElement_1.NoneElement("ele", { locator, index });
+        }
+        return result;
     }
     get response_headers() {
         return this._sessionPage.response_headers;

@@ -97,6 +97,14 @@ class SessionPage {
     get response_headers() {
         return this._responseHeaders;
     }
+    get response() {
+        return {
+            status: this._statusCode,
+            headers: this._responseHeaders,
+            body: this._html,
+            url: this._url,
+        };
+    }
     /**
      * 返回页面原始数据
      */
@@ -140,11 +148,16 @@ class SessionPage {
     get timeout() {
         return this._options.timeout;
     }
-    async cookies() {
+    async cookies(allDomains = false, allInfo = false) {
         const now = Date.now();
-        return this._cookies
-            .filter((c) => !c.expiresAt || c.expiresAt > now)
-            .map((c) => ({ ...c }));
+        let result = this._cookies;
+        if (!allDomains) {
+            const currentDomain = this._url ? new URL(this._url).hostname : '';
+            result = result.filter(c => !c.domain || c.domain === currentDomain);
+        }
+        return result
+            .filter((c) => allDomains || !c.expiresAt || c.expiresAt > now)
+            .map((c) => allInfo ? { ...c } : { name: c.name, value: c.value, domain: c.domain, path: c.path });
     }
     async set_cookies(cookies) {
         for (const cookie of cookies) {
@@ -205,40 +218,52 @@ class SessionPage {
         }
     }
     async get(url, extra) {
-        const { retryTimes, retryInterval } = this._options;
+        const finalUrl = this._buildUrl(url, extra?.params);
+        const reqExtra = this._buildRequestExtra(extra);
+        const retryTimes = extra?.retry ?? this._options.retryTimes;
+        const retryInterval = extra?.interval ?? this._options.retryInterval;
         let attempt = 0;
         while (true) {
             try {
-                const res = await this._request("GET", url, extra);
+                const res = await this._request("GET", finalUrl, reqExtra);
                 this._cacheResponse(res);
                 return res.statusCode >= 200 && res.statusCode < 400;
             }
-            catch {
+            catch (e) {
                 if (attempt >= retryTimes) {
                     this._url = url;
                     this._statusCode = 0;
                     this._html = null;
+                    if (extra?.showErrmsg) {
+                        console.error(`SessionPage.get failed: ${url}`, e);
+                    }
                     return false;
                 }
                 attempt += 1;
-                await new Promise((resolve) => setTimeout(resolve, this._options.retryInterval * 1000));
+                await new Promise((resolve) => setTimeout(resolve, retryInterval * 1000));
             }
         }
     }
     async post(url, extra) {
-        const { retryTimes, retryInterval } = this._options;
+        const finalUrl = this._buildUrl(url, extra?.params);
+        const reqExtra = this._buildRequestExtra(extra);
+        const retryTimes = extra?.retry ?? this._options.retryTimes;
+        const retryInterval = extra?.interval ?? this._options.retryInterval;
         let attempt = 0;
         while (true) {
             try {
-                const res = await this._request("POST", url, extra);
+                const res = await this._request("POST", finalUrl, reqExtra);
                 this._cacheResponse(res);
                 return res.statusCode >= 200 && res.statusCode < 400;
             }
-            catch {
+            catch (e) {
                 if (attempt >= retryTimes) {
                     this._url = url;
                     this._statusCode = 0;
                     this._html = null;
+                    if (extra?.showErrmsg) {
+                        console.error(`SessionPage.post failed: ${url}`, e);
+                    }
                     return false;
                 }
                 attempt += 1;
@@ -312,6 +337,58 @@ class SessionPage {
         this._url = null;
         this._statusCode = null;
         this._responseHeaders = null;
+    }
+    _buildUrl(url, params) {
+        if (!params || Object.keys(params).length === 0)
+            return url;
+        const urlObj = new URL(url);
+        for (const [key, value] of Object.entries(params)) {
+            urlObj.searchParams.set(key, value);
+        }
+        return urlObj.toString();
+    }
+    _buildRequestExtra(extra) {
+        if (!extra)
+            return {};
+        const result = {};
+        if (extra.headers) {
+            result.headers = { ...extra.headers };
+        }
+        if (extra.auth) {
+            if (!result.headers)
+                result.headers = {};
+            const auth = extra.auth;
+            const username = Array.isArray(auth) ? auth[0] : auth.username;
+            const password = Array.isArray(auth) ? auth[1] : auth.password;
+            const encoded = Buffer.from(`${username}:${password}`).toString('base64');
+            result.headers['Authorization'] = `Basic ${encoded}`;
+        }
+        if (extra.cookies && Array.isArray(extra.cookies)) {
+            if (!result.headers)
+                result.headers = {};
+            const cookieStr = extra.cookies.map((c) => `${c.name}=${c.value}`).join('; ');
+            result.headers['Cookie'] = cookieStr;
+        }
+        if (extra.json !== undefined) {
+            if (!result.headers)
+                result.headers = {};
+            result.headers['Content-Type'] = 'application/json';
+            result.body = typeof extra.json === 'string' ? extra.json : JSON.stringify(extra.json);
+        }
+        else if (extra.data && typeof extra.data === 'object') {
+            if (!result.headers)
+                result.headers = {};
+            result.headers['Content-Type'] = 'application/x-www-form-urlencoded';
+            const params = new URLSearchParams();
+            for (const [key, value] of Object.entries(extra.data)) {
+                params.append(key, String(value));
+            }
+            result.body = params.toString();
+        }
+        else if (extra.body) {
+            result.body = extra.body;
+        }
+        return result;
     }
     _cacheResponse(res) {
         this._url = res.url;

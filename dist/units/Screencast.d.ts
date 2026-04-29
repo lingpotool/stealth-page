@@ -2,7 +2,7 @@ import { CDPSession } from "../core/CDPSession";
 /**
  * 录屏模式
  */
-export type ScreencastMode = "video" | "frugal_video" | "imgs" | "frugal_imgs";
+export type ScreencastMode = "video" | "frugal_video" | "imgs" | "frugal_imgs" | "js_video";
 /**
  * 录屏页面接口
  */
@@ -15,22 +15,11 @@ export interface ScreencastPage {
 export declare class ScreencastModeSetter {
     private readonly _screencast;
     constructor(screencast: Screencast);
-    /**
-     * 持续视频模式
-     */
     video_mode(): void;
-    /**
-     * 节俭视频模式（页面有变化时才录制）
-     */
     frugal_video_mode(): void;
-    /**
-     * 持续截图模式
-     */
     imgs_mode(): void;
-    /**
-     * 节俭截图模式（页面有变化时才截图）
-     */
     frugal_imgs_mode(): void;
+    js_video_mode(): void;
 }
 /**
  * 屏幕录制类，对应 DrissionPage 的 Screencast

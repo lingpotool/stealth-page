@@ -8,96 +8,81 @@ import { BrowserStates } from "../units/BrowserStates";
 export interface ChromiumInitOptions {
     addrOrOpts?: string | ChromiumOptions;
 }
-/**
- * Node 版 Chromium，对应 DrissionPage.Chromium。
- * 当前只定义接口和基本结构，具体连接和 CDP 逻辑后续实现。
- */
 export declare class Chromium {
+    private static readonly _BROWSERS;
     private _options;
     private _browser;
     private _cdpSession;
     private _setter;
     private _waiter;
     private _states;
+    private _disconnect_flag;
+    private _is_headless;
+    private _process_id;
     constructor(addrOrOpts?: string | ChromiumOptions);
-    /**
-     * 返回用于设置的对象
-     */
+    static get_instances(): Map<string, Chromium>;
     get set(): BrowserSetter;
-    /**
-     * 返回用于等待的对象
-     */
     get wait(): BrowserWaiter;
-    /**
-     * 返回用于状态检查的对象
-     */
     get states(): BrowserStates;
     get options(): ChromiumOptions;
     get browser(): Browser;
     get cdpSession(): CDPSession;
+    get none_ele_return_value(): any;
+    set none_ele_return_value(value: any);
+    get none_ele_value(): any;
+    set none_ele_value(value: any);
+    get auto_handle_alert(): boolean | null;
+    set auto_handle_alert(value: boolean | null);
+    get _disconnect_flag_value(): boolean;
+    get is_headless(): boolean;
+    _on_disconnect(): void;
+    _run_cdp(cmd: string, params?: Record<string, any>, _ignore?: any[]): Promise<any>;
     connect(): Promise<void>;
     new_page(): Promise<Page>;
-    quit(): Promise<void>;
-    get_tabs(): Promise<Array<{
+    quit(options?: {
+        timeout?: number;
+        force?: boolean;
+        delData?: boolean;
+    }): Promise<void>;
+    get_tab(idOrNum?: string | number, title?: string, url?: string, tabType?: string | string[]): Promise<{
+        id: string;
+        url: string;
+        title: string;
+        type: string;
+    } | null>;
+    get_tabs(title?: string, url?: string, tabType?: string | string[]): Promise<Array<{
         id: string;
         url: string;
         title: string;
         type: string;
     }>>;
-    activate_tab(tabId: string): Promise<void>;
+    activate_tab(tabIdOrIndex: string | number): Promise<void>;
     close_tab(tabId: string): Promise<void>;
-    new_tab(url?: string): Promise<string>;
+    new_tab(url?: string, options?: {
+        newWindow?: boolean;
+        background?: boolean;
+        newContext?: boolean;
+    }): Promise<string>;
+    private _new_tab_by_js;
     get is_connected(): boolean;
-    /**
-     * 根据 tab id 获取 Page 对象
-     */
     get_page_by_id(tabId: string): Promise<Page>;
     get_version(): Promise<{
         browser: string;
         protocol: string;
         userAgent: string;
     }>;
-    /**
-     * 返回标签页数量
-     */
+    version(): Promise<string>;
     tabs_count(): Promise<number>;
-    /**
-     * 返回所有标签页 id 列表
-     */
     tab_ids(): Promise<string[]>;
-    /**
-     * 返回最新的标签页 id
-     */
     latest_tab(): Promise<string | null>;
-    /**
-     * 获取所有域名的 cookies
-     */
     cookies(allInfo?: boolean): Promise<any[]>;
-    /**
-     * 清除缓存
-     */
     clear_cache(options?: {
         cache?: boolean;
         cookies?: boolean;
     }): Promise<void>;
-    /**
-     * 关闭多个标签页
-     */
     close_tabs(tabIds: string | string[], others?: boolean): Promise<void>;
-    /**
-     * 断开重连
-     */
     reconnect(): Promise<void>;
-    /**
-     * 获取浏览器进程 ID
-     */
     process_id(): Promise<number | null>;
-    /**
-     * 获取用户数据目录路径
-     */
     get user_data_path(): string | undefined;
-    /**
-     * 获取下载路径
-     */
     get download_path(): string | undefined;
 }

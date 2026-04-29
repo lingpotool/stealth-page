@@ -1,5 +1,6 @@
 import { CDPSession } from "./CDPSession";
 import { ShadowRoot } from "./ShadowRoot";
+import { NoneElement } from "./NoneElement";
 import { ElementScroller } from "../units/ElementScroller";
 import { ElementClicker } from "../units/ElementClicker";
 import { ElementWaiter } from "../units/ElementWaiter";
@@ -107,6 +108,18 @@ export declare class Element {
      * 伪元素内容获取对象
      */
     get pseudo(): Pseudo;
+    get tab(): any;
+    get owner(): any;
+    get timeout(): any;
+    _input_focus(): Promise<void>;
+    run_js_loaded(script: string, ...args: any[]): Promise<any>;
+    _run_js(script: string, ...args: any[]): Promise<any>;
+    _get_ele_path(xpathMode?: boolean): Promise<string>;
+    _get_obj_id(nodeId?: number, backendId?: number): Promise<string>;
+    _get_node_id(objId?: string, backendId?: number): Promise<number>;
+    _get_backend_id(nodeId?: number): Promise<number>;
+    _refresh_id(): Promise<void>;
+    _find_elements(locator: string, timeout: number, index?: number, relative?: boolean, raiseErr?: boolean): Promise<Element | NoneElement | Element[]>;
     /**
      * 元素标签名
      */
@@ -129,6 +142,7 @@ export declare class Element {
      * 返回元素内所有直接子节点的文本
      */
     texts(textNodeOnly?: boolean): Promise<string[]>;
+    comments(): Promise<string[]>;
     /**
      * 返回元素的 href 或 src 属性
      */
@@ -146,7 +160,7 @@ export declare class Element {
      */
     css_path(): Promise<string>;
     set_attr(name: string, value: string): Promise<void>;
-    remove_attr(name: string): Promise<void>;
+    remove_attr(name: string): Promise<Element>;
     is_displayed(): Promise<boolean>;
     is_enabled(): Promise<boolean>;
     is_selected(): Promise<boolean>;
@@ -157,22 +171,19 @@ export declare class Element {
     /**
      * 输入文本
      */
-    input(value: string, clear?: boolean, byJs?: boolean): Promise<Element>;
+    input(value: string | (string | number)[], clear?: boolean, byJs?: boolean): Promise<Element>;
     /**
      * 清空内容
      */
-    clear(byJs?: boolean): Promise<void>;
+    clear(byJs?: boolean): Promise<Element>;
     /**
      * 获取焦点（对齐 DrissionPage: 优先使用 DOM.focus + backendNodeId）
      */
-    focus(): Promise<void>;
+    focus(): Promise<Element>;
     /**
      * 鼠标悬停
      */
-    hover(offsetX?: number, offsetY?: number): Promise<void>;
-    /**
-     * 双击
-     */
+    hover(offsetX?: number, offsetY?: number): Promise<Element>;
     double_click(): Promise<void>;
     /**
      * 右键点击
@@ -189,14 +200,11 @@ export declare class Element {
     /**
      * 拖拽到相对位置
      */
-    drag(offsetX?: number, offsetY?: number, duration?: number): Promise<void>;
-    /**
-     * 拖拽到目标元素或坐标
-     */
+    drag(offsetX?: number, offsetY?: number, duration?: number): Promise<Element>;
     drag_to(target: Element | {
         x: number;
         y: number;
-    }, duration?: number): Promise<void>;
+    }, duration?: number): Promise<Element>;
     private _performDrag;
     location(): Promise<{
         x: number;
@@ -212,21 +220,22 @@ export declare class Element {
         width: number;
         height: number;
     }>;
-    parent(levelOrLoc?: number | string, _index?: number): Promise<Element | null>;
+    parent(levelOrLoc?: number | string, _index?: number): Promise<Element | NoneElement>;
     private _getParentByLevel;
-    child(locatorOrIndex?: string | number, index?: number): Promise<Element | null>;
+    child(locatorOrIndex?: string | number, index?: number, eleOnly?: boolean): Promise<Element | NoneElement>;
     private _getChildByIndex;
-    children(locator?: string): Promise<Element[]>;
-    next(locator?: string, index?: number): Promise<Element | null>;
-    prev(locator?: string, index?: number): Promise<Element | null>;
+    private _getChildNodeByIndex;
+    children(locator?: string, eleOnly?: boolean): Promise<Element[]>;
+    next(locator?: string, index?: number, eleOnly?: boolean): Promise<Element | NoneElement>;
+    prev(locator?: string, index?: number, eleOnly?: boolean): Promise<Element | NoneElement>;
     private _getSibling;
-    nexts(locator?: string): Promise<Element[]>;
-    prevs(locator?: string): Promise<Element[]>;
+    nexts(locator?: string, eleOnly?: boolean): Promise<Element[]>;
+    prevs(locator?: string, eleOnly?: boolean): Promise<Element[]>;
     private _getSiblings;
-    before(locator?: string, index?: number): Promise<Element | null>;
-    after(locator?: string, index?: number): Promise<Element | null>;
-    befores(locator?: string): Promise<Element[]>;
-    afters(locator?: string): Promise<Element[]>;
+    before(locator?: string, index?: number, eleOnly?: boolean): Promise<Element | NoneElement>;
+    after(locator?: string, index?: number, eleOnly?: boolean): Promise<Element | NoneElement>;
+    befores(locator?: string, eleOnly?: boolean): Promise<Element[]>;
+    afters(locator?: string, eleOnly?: boolean): Promise<Element[]>;
     private _getDocumentNodeId;
     /**
      * 创建子元素，继承 page 引用
@@ -237,8 +246,10 @@ export declare class Element {
      * shadow_root 的简写
      */
     get sr(): Promise<ShadowRoot | null>;
-    ele(locator: string, index?: number): Promise<Element | null>;
-    eles(locator: string): Promise<Element[]>;
+    ele(locator: string, index?: number, timeout?: number): Promise<Element | NoneElement>;
+    private _eleOnce;
+    eles(locator: string, timeout?: number): Promise<Element[]>;
+    private _elesOnce;
     private _elesByXPath;
     /**
      * 以 SessionElement 形式返回元素（高效处理复杂页面）
@@ -251,29 +262,21 @@ export declare class Element {
     run_js(script: string, ...args: any[]): Promise<any>;
     run_async_js(script: string, ...args: any[]): Promise<void>;
     screenshot(path?: string): Promise<Buffer>;
-    get_screenshot(path?: string, name?: string, asBytes?: boolean, asBase64?: boolean, scrollToCenter?: boolean): Promise<string | Buffer>;
+    get_screenshot(path?: string, name?: string, asBytes?: boolean | 'jpg' | 'jpeg' | 'png' | 'webp', asBase64?: boolean | 'jpg' | 'jpeg' | 'png' | 'webp', scrollToCenter?: boolean): Promise<string | Buffer>;
     src(_timeout?: number, base64ToBytes?: boolean): Promise<Buffer | string | null>;
     save(path?: string, name?: string, _timeout?: number, _rename?: boolean): Promise<string>;
     /**
      * 设置文件输入框的文件路径
      */
     set_file_input(files: string | string[]): Promise<Element>;
+    _set_file_input(files: string | string[]): Promise<void>;
     /**
      * 获取元素右边的指定元素
      */
-    east(locOrPixel?: string | number, index?: number): Promise<Element | null>;
-    /**
-     * 获取元素下方的指定元素
-     */
-    south(locOrPixel?: string | number, index?: number): Promise<Element | null>;
-    /**
-     * 获取元素左边的指定元素
-     */
-    west(locOrPixel?: string | number, index?: number): Promise<Element | null>;
-    /**
-     * 获取元素上方的指定元素
-     */
-    north(locOrPixel?: string | number, index?: number): Promise<Element | null>;
+    east(locOrPixel?: string | number, index?: number): Promise<Element | NoneElement>;
+    south(locOrPixel?: string | number, index?: number): Promise<Element | NoneElement>;
+    west(locOrPixel?: string | number, index?: number): Promise<Element | NoneElement>;
+    north(locOrPixel?: string | number, index?: number): Promise<Element | NoneElement>;
     /**
      * 获取覆盖在本元素上最上层的元素
      */
@@ -281,6 +284,7 @@ export declare class Element {
     /**
      * 获取相对本元素指定偏移量位置的元素
      */
-    offset(locator?: string, x?: number, y?: number, timeout?: number): Promise<Element | null>;
+    offset(locator?: string, x?: number, y?: number, timeout?: number): Promise<Element | NoneElement>;
     private _getRelativeEle;
+    private _getNodeAtLocation;
 }

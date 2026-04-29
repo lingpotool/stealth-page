@@ -1,7 +1,10 @@
+import { ChromiumPage } from "./ChromiumPage";
 import { SessionPage } from "./SessionPage";
 import { ChromiumOptions } from "../config/ChromiumOptions";
 import { SessionOptions } from "../config/SessionOptions";
 import { SessionElement } from "../core/SessionElement";
+import { WebPageSetter } from "../units/WebPageSetter";
+import { WebPageWaiter } from "../units/WebPageWaiter";
 export type WebPageMode = "d" | "s";
 /**
  * Node 版 WebPage，对应 DrissionPage.WebPage。
@@ -11,6 +14,18 @@ export declare class WebPage {
     private _mode;
     private readonly _chromiumPage;
     private readonly _sessionPage;
+    private _setter;
+    private _waiter;
+    get set(): WebPageSetter;
+    get web_wait(): WebPageWaiter;
+    get response(): {
+        status: number | null;
+        headers: any;
+        body: string | null;
+        url: string | null;
+    };
+    get chromium_page(): ChromiumPage;
+    get session_page(): SessionPage;
     get wait(): any;
     /**
      * 滚动操作对象（仅 d 模式）
@@ -38,10 +53,9 @@ export declare class WebPage {
     get window(): any;
     constructor(mode?: WebPageMode, _timeout?: number | null, chromiumOptions?: ChromiumOptions, sessionOrOptions?: SessionOptions);
     get mode(): WebPageMode;
-    change_mode(mode?: WebPageMode): void;
+    change_mode(mode?: WebPageMode, go?: boolean, copyCookies?: boolean): void;
     get chromium_options(): ChromiumOptions;
     get session_options(): SessionOptions;
-    get set(): any;
     get actions(): any;
     get listen(): any;
     get download(): any;
@@ -65,8 +79,14 @@ export declare class WebPage {
     title(): Promise<string>;
     url(): Promise<string>;
     cookies(): Promise<any[]>;
-    new_tab(url?: string): Promise<any>;
+    new_tab(url?: string, options?: {
+        newWindow?: boolean;
+        background?: boolean;
+        newContext?: boolean;
+    }): Promise<any>;
     close(): Promise<void>;
+    close_driver(): Promise<void>;
+    close_session(): void;
     run_js(script: string): Promise<any>;
     set_cookies(cookies: Array<{
         name: string;
@@ -77,8 +97,8 @@ export declare class WebPage {
     refresh(): Promise<void>;
     back(): Promise<void>;
     forward(): Promise<void>;
-    get tabs_count(): number;
-    get tab_ids(): string[];
+    get tabs_count(): Promise<number>;
+    get tab_ids(): Promise<string[]>;
     scroll_to(x: number, y: number): Promise<void>;
     scroll_to_top(): Promise<void>;
     scroll_to_bottom(): Promise<void>;
@@ -87,7 +107,7 @@ export declare class WebPage {
     delete(url: string, extra?: any): Promise<boolean>;
     get_tabs(): Promise<any[]>;
     get_tab(tabId: string): Promise<any>;
-    activate_tab(tabId: string): Promise<void>;
+    activate_tab(tabIdOrIndex: string | number): Promise<void>;
     close_tab(tabId?: string): Promise<void>;
     handle_alert(accept?: boolean | null, promptText?: string, timeout?: number, nextOne?: boolean): Promise<string | false>;
     screenshot(path?: string): Promise<Buffer>;

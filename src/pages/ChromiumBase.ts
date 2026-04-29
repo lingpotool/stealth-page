@@ -50,6 +50,18 @@ export abstract class ChromiumBase {
     return this._browser;
   }
 
+  get driver() {
+    return this._page?.cdpSession ?? null;
+  }
+
+  get _target_id(): string {
+    return (this._page as any)?._target_id ?? this.tab_id ?? '';
+  }
+
+  get _browser_url(): string {
+    return this._browser.options.address;
+  }
+
   get set(): ChromiumPageSetter {
     if (!this._setter) {
       this._setter = new ChromiumPageSetter(this as any);
@@ -256,6 +268,18 @@ export abstract class ChromiumBase {
     return this._page!.html();
   }
 
+  async json(): Promise<Record<string, any> | null> {
+    await this.init();
+    const text = await this._page!.html();
+    try {
+      const match = text.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i);
+      const content = match ? match[1] : text.replace(/<[^>]+>/g, '');
+      return JSON.parse(content);
+    } catch {
+      return null;
+    }
+  }
+
   async title(): Promise<string> {
     await this.init();
     return this._page!.title();
@@ -264,11 +288,6 @@ export abstract class ChromiumBase {
   async url(): Promise<string> {
     await this.init();
     return this._page!.url();
-  }
-
-  async json(): Promise<any> {
-    await this.init();
-    return this._page!.json();
   }
 
   async cookies(allDomains: boolean = false, allInfo: boolean = false): Promise<any[]> {
@@ -401,11 +420,84 @@ export abstract class ChromiumBase {
 
   async run_cdp_loaded(cmd: string, params: Record<string, any> = {}): Promise<any> {
     await this.init();
-    await this._page!.cdpSession.send("Runtime.evaluate", {
-      expression: "new Promise(r => document.readyState === 'complete' ? r() : window.addEventListener('load', r))",
-      awaitPromise: true,
-    });
+    await this._wait_loaded();
     return this._page!.cdpSession.send(cmd, params);
+  }
+
+  async _run_cdp_loaded(cmd: string, params: Record<string, any> = {}): Promise<any> {
+    return this.run_cdp_loaded(cmd, params);
+  }
+
+  async _run_js(script: string, ...args: any[]): Promise<any> {
+    return this.run_js(script, ...args);
+  }
+
+  async _run_js_loaded(script: string, ...args: any[]): Promise<any> {
+    return this.run_js_loaded(script, ...args);
+  }
+
+  async _wait_loaded(timeout?: number): Promise<boolean> {
+    await this.init();
+    const timeoutMs = (timeout ?? this._browser.options.timeouts.pageLoad) * 1000;
+    const deadline = Date.now() + timeoutMs;
+
+    while (Date.now() < deadline) {
+      try {
+        const { result } = await this._page!.cdpSession.send<{ result: { value: string } }>("Runtime.evaluate", {
+          expression: "document.readyState",
+          returnByValue: true,
+        });
+        if (result.value === 'complete' || result.value === 'interactive') {
+          return true;
+        }
+      } catch {}
+      await new Promise(r => setTimeout(r, 50));
+    }
+
+    await this.stop_loading();
+    return false;
+  }
+
+  async _handle_alert(accept: boolean | null = true, send?: string, timeout?: number, nextOne: boolean = false): Promise<string | false> {
+    return this.handle_alert(accept, send, timeout, nextOne);
+  }
+
+  _on_alert_open(_event: any = {}): void {}
+
+  _on_alert_close(_event: any = {}): void {}
+
+  async _find_elements(
+    locator: string | Element,
+    timeout: number,
+    index?: number,
+    relative: boolean = false,
+    raiseErr?: boolean
+  ): Promise<Element | NoneElement | Element[]> {
+    if (locator instanceof Element) return locator;
+    if (index === undefined || index === null) {
+      return this.eles(locator, timeout);
+    }
+    if (index === 1) {
+      const el = await this.ele(locator, 1, timeout);
+      if (el instanceof NoneElement) {
+        if (raiseErr ?? NoneElement.raiseWhenNotFound) {
+          const { ElementNotFoundError } = await import("../errors");
+          throw new ElementNotFoundError(locator);
+        }
+      }
+      return el;
+    }
+    const all = await this.eles(locator, timeout);
+    const idx = index > 0 ? index - 1 : all.length + index;
+    const result = all[idx] ?? null;
+    if (!result) {
+      if (raiseErr ?? NoneElement.raiseWhenNotFound) {
+        const { ElementNotFoundError } = await import("../errors");
+        throw new ElementNotFoundError(locator);
+      }
+      return new NoneElement("ele", { locator, index });
+    }
+    return result;
   }
 
   disconnect(): void {
@@ -431,6 +523,101 @@ export abstract class ChromiumBase {
   async screenshot(path?: string): Promise<Buffer> {
     await this.init();
     return this._page!.screenshot(path);
+  }
+
+  async get_screenshot(
+    path?: string,
+    name?: string,
+    asBytes?: boolean | 'jpg' | 'jpeg' | 'png' | 'webp',
+    asBase64?: boolean | 'jpg' | 'jpeg' | 'png' | 'webp',
+    fullPage: boolean = false,
+    leftTop?: [number, number],
+    rightBottom?: [number, number]
+  ): Promise<string | Buffer> {
+    await this.init();
+    return this._get_screenshot(path, name, asBytes, asBase64, fullPage, leftTop, rightBottom);
+  }
+
+  async _get_screenshot(
+    path?: string,
+    name?: string,
+    asBytes?: boolean | 'jpg' | 'jpeg' | 'png' | 'webp',
+    asBase64?: boolean | 'jpg' | 'jpeg' | 'png' | 'webp',
+    fullPage: boolean = false,
+    leftTop?: [number, number],
+    rightBottom?: [number, number],
+    ele?: Element
+  ): Promise<string | Buffer> {
+    await this.init();
+
+    let picType: string = 'png';
+    if (asBytes) {
+      picType = asBytes === true ? 'png' : (asBytes === 'jpg' ? 'jpeg' : asBytes);
+    } else if (asBase64) {
+      picType = asBase64 === true ? 'png' : (asBase64 === 'jpg' ? 'jpeg' : asBase64);
+    }
+
+    const clipParams: Record<string, any> = {};
+    if (leftTop || rightBottom) {
+      const layoutMetrics = await this._page!.cdpSession.send<{
+        cssVisualViewport: { x: number; y: number; width: number; height: number; scaleX: number; scaleY: number }
+      }>("Page.getLayoutMetrics");
+      const viewport = layoutMetrics.cssVisualViewport;
+      const scale = viewport.scaleX || 1;
+
+      clipParams.clip = {
+        x: (leftTop ? leftTop[0] : 0) / scale,
+        y: (leftTop ? leftTop[1] : 0) / scale,
+        width: ((rightBottom ? rightBottom[0] : viewport.width) - (leftTop ? leftTop[0] : 0)) / scale,
+        height: ((rightBottom ? rightBottom[1] : viewport.height) - (leftTop ? leftTop[1] : 0)) / scale,
+        scale: 1,
+      };
+    } else if (ele) {
+      await (ele as any)._ensureBackendNodeId();
+      const backendNodeId = (ele as any).backendNodeId;
+      if (backendNodeId > 0) {
+        const { model } = await this._page!.cdpSession.send<{
+          model: { content: number[]; width: number; height: number }
+        }>("DOM.getBoxModel", { backendNodeId });
+        clipParams.clip = {
+          x: model.content[0],
+          y: model.content[1],
+          width: model.content[4] - model.content[0],
+          height: model.content[5] - model.content[1],
+          scale: 1,
+        };
+      }
+    }
+
+    const screenshotParams: Record<string, any> = {
+      format: picType === 'jpeg' ? 'jpeg' : 'png',
+      quality: picType === 'jpeg' ? 80 : undefined,
+    };
+
+    if (fullPage) {
+      screenshotParams.captureBeyondViewport = true;
+    }
+
+    if (clipParams.clip) {
+      screenshotParams.clip = clipParams.clip;
+    }
+
+    const { data } = await this._page!.cdpSession.send<{ data: string }>("Page.captureScreenshot", screenshotParams);
+    const buffer = Buffer.from(data, "base64");
+
+    if (asBase64) return data;
+    if (asBytes) return buffer;
+
+    if (path) {
+      const fs = await import("fs");
+      const pathModule = await import("path");
+      const ext = `.${picType === 'jpeg' ? 'jpg' : picType}`;
+      const fileName = name || `screenshot${ext}`;
+      const fullPath = pathModule.join(path, fileName);
+      fs.writeFileSync(fullPath, buffer);
+      return fullPath;
+    }
+    return buffer;
   }
 
   async get_frames(): Promise<Array<{ id: string; url: string; name: string }>> {
@@ -763,18 +950,34 @@ export abstract class ChromiumBase {
       const buffer = Buffer.from(data, "base64");
       if (path || name) {
         const fs = await import("fs");
-        const filePath = path ? `${path}/${name || "page.pdf"}` : name || "page.pdf";
-        fs.writeFileSync(filePath, buffer);
-        return filePath;
+        const pathModule = await import("path");
+        let fullPath: string;
+        if (path && pathModule.extname(path)) {
+          fullPath = path;
+        } else {
+          fullPath = path ? pathModule.join(path, name || "page.pdf") : (name || "page.pdf");
+        }
+        const dir = pathModule.dirname(fullPath);
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(fullPath, buffer);
+        return fullPath;
       }
       return buffer;
     } else {
       const { data } = await this._page!.cdpSession.send<{ data: string }>("Page.captureSnapshot", { format: "mhtml" });
       if (path || name) {
         const fs = await import("fs");
-        const filePath = path ? `${path}/${name || "page.mhtml"}` : name || "page.mhtml";
-        fs.writeFileSync(filePath, data);
-        return filePath;
+        const pathModule = await import("path");
+        let fullPath: string;
+        if (path && pathModule.extname(path)) {
+          fullPath = path;
+        } else {
+          fullPath = path ? pathModule.join(path, name || "page.mhtml") : (name || "page.mhtml");
+        }
+        const dir = pathModule.dirname(fullPath);
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(fullPath, data);
+        return fullPath;
       }
       return data;
     }

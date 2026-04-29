@@ -28,6 +28,12 @@ export declare class SessionPage {
     get html(): string | null;
     get title(): string | null;
     get response_headers(): http.IncomingHttpHeaders | null;
+    get response(): {
+        status: number | null;
+        headers: http.IncomingHttpHeaders | null;
+        body: string | null;
+        url: string | null;
+    };
     /**
      * 返回页面原始数据
      */
@@ -52,7 +58,7 @@ export declare class SessionPage {
      * 返回超时设置
      */
     get timeout(): number;
-    cookies(): Promise<CookieEntry[]>;
+    cookies(allDomains?: boolean, allInfo?: boolean): Promise<CookieEntry[]>;
     set_cookies(cookies: Array<{
         name: string;
         value: string;
@@ -70,11 +76,50 @@ export declare class SessionPage {
     }): Promise<boolean>;
     get(url: string, extra?: {
         headers?: Record<string, string>;
+        params?: Record<string, string>;
+        data?: Record<string, any>;
+        json?: any;
+        cookies?: Array<{
+            name: string;
+            value: string;
+            domain?: string;
+            path?: string;
+        }>;
+        auth?: {
+            username: string;
+            password: string;
+        } | [string, string];
+        allow_redirects?: boolean;
+        verify?: boolean;
+        timeout?: number;
+        showErrmsg?: boolean;
+        retry?: number;
+        interval?: number;
     }): Promise<boolean>;
     post(url: string, extra?: {
         headers?: Record<string, string>;
+        params?: Record<string, string>;
+        data?: Record<string, any>;
+        json?: any;
         body?: string | Buffer;
-    } | undefined): Promise<boolean>;
+        cookies?: Array<{
+            name: string;
+            value: string;
+            domain?: string;
+            path?: string;
+        }>;
+        auth?: {
+            username: string;
+            password: string;
+        } | [string, string];
+        files?: Record<string, string>;
+        allow_redirects?: boolean;
+        verify?: boolean;
+        timeout?: number;
+        showErrmsg?: boolean;
+        retry?: number;
+        interval?: number;
+    }): Promise<boolean>;
     ele(locator: any, index?: number, _timeout?: number): Promise<any>;
     eles(locator: any, _timeout?: number): Promise<any[]>;
     /**
@@ -89,6 +134,8 @@ export declare class SessionPage {
      * 关闭 Session（清理资源）
      */
     close(): void;
+    private _buildUrl;
+    private _buildRequestExtra;
     private _cacheResponse;
     private _request;
     private _buildCookieHeader;

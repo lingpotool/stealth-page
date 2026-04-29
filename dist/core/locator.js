@@ -2,6 +2,15 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.parseLocator = parseLocator;
 exports.quoteXPath = _quotesEscape;
+exports.css_trans = css_trans;
+exports.is_str_loc = is_str_loc;
+exports.is_selenium_loc = is_selenium_loc;
+exports.get_loc = get_loc;
+exports.str_to_xpath_loc = str_to_xpath_loc;
+exports.str_to_css_loc = str_to_css_loc;
+exports.translate_loc = translate_loc;
+exports.translate_css_loc = translate_css_loc;
+exports.locator_to_tuple = locator_to_tuple;
 /**
  * 解析 Drission 风格的定位字符串（完全对齐 DrissionPage 的 locator.py）
  *
@@ -99,13 +108,13 @@ function _preprocess(loc) {
         if (loc.startsWith(".=") || loc.startsWith(".:") || loc.startsWith(".^") || loc.startsWith(".$")) {
             return "@class" + loc.slice(1);
         }
-        return "@class=" + loc.slice(1);
+        return "css:" + loc;
     }
     if (loc.startsWith("#")) {
         if (loc.startsWith("#=") || loc.startsWith("#:") || loc.startsWith("#^") || loc.startsWith("#$")) {
             return "@id" + loc.slice(1);
         }
-        return "@id=" + loc.slice(1);
+        return "css:" + loc;
     }
     if (loc.startsWith("t:") || loc.startsWith("t=")) {
         return "tag:" + loc.slice(2);
@@ -306,4 +315,328 @@ function _makeMultiAttrXPath(tag, text) {
     }
     const xpath = argStr ? `//*[${argStr}]` : `//*`;
     return { type: "xpath", value: xpath, raw: text };
+}
+const By_1 = require("./By");
+function css_trans(txt) {
+    const special = new Set(['!', '"', '#', '$', '%', '&', "'", '(', ')', '*', '+', ',', '-', '.', '/', ':', ';', '<', '=', '>', '?', '@', '[', '\\', ']', '^', '`', '{', '|', '}', '~', ' ']);
+    return Array.from(txt).map(c => special.has(c) ? `\\${c}` : c).join('');
+}
+function is_str_loc(text) {
+    return text.startsWith('.') || text.startsWith('#') || text.startsWith('@') ||
+        text.startsWith('t:') || text.startsWith('t=') ||
+        text.startsWith('tag:') || text.startsWith('tag=') ||
+        text.startsWith('tx:') || text.startsWith('tx=') || text.startsWith('tx^') || text.startsWith('tx$') ||
+        text.startsWith('text:') || text.startsWith('text=') || text.startsWith('text^') || text.startsWith('text$') ||
+        text.startsWith('xpath:') || text.startsWith('xpath=') ||
+        text.startsWith('x:') || text.startsWith('x=') ||
+        text.startsWith('css:') || text.startsWith('css=') ||
+        text.startsWith('c:') || text.startsWith('c=');
+}
+function is_selenium_loc(loc) {
+    if (!Array.isArray(loc) || loc.length !== 2)
+        return false;
+    if (typeof loc[0] !== 'string' || typeof loc[1] !== 'string')
+        return false;
+    const byConstants = [By_1.By.ID, By_1.By.XPATH, By_1.By.LINK_TEXT, By_1.By.PARTIAL_LINK_TEXT, By_1.By.NAME, By_1.By.TAG_NAME, By_1.By.CLASS_NAME, By_1.By.CSS_SELECTOR];
+    return byConstants.includes(loc[0].toLowerCase());
+}
+function get_loc(loc, translate_css = false, css_mode = false) {
+    let result;
+    if (Array.isArray(loc)) {
+        result = css_mode ? translate_css_loc(loc) : translate_loc(loc);
+    }
+    else if (typeof loc === 'string') {
+        result = css_mode ? str_to_css_loc(loc) : str_to_xpath_loc(loc);
+    }
+    else {
+        throw new Error(`Invalid locator type: ${typeof loc}`);
+    }
+    if (result.by === 'css selector' && translate_css) {
+        // In Python this uses lxml.cssselect to translate CSS to XPath
+        // In Node.js we keep CSS as-is since DOM.performSearch supports CSS natively
+    }
+    return result;
+}
+function str_to_xpath_loc(loc) {
+    let locBy = 'xpath';
+    const text = _preprocess(loc.trim());
+    if ((text.startsWith('@@') || text.startsWith('@|') || text.startsWith('@!')) &&
+        text !== '@@' && text !== '@|' && text !== '@!') {
+        const r = _makeMultiAttrXPath('*', text);
+        return { by: 'xpath', value: r.value };
+    }
+    if (text.startsWith('@') && text !== '@') {
+        const r = _makeSingleAttrXPath('*', text);
+        return { by: 'xpath', value: r.value };
+    }
+    if ((text.startsWith('tag:') || text.startsWith('tag=') || text.startsWith('tag^') || text.startsWith('tag$')) &&
+        text !== 'tag:' && text !== 'tag=' && text !== 'tag^' && text !== 'tag$') {
+        const atInd = text.indexOf('@');
+        if (atInd === -1) {
+            return { by: 'xpath', value: `//*[name()="${text.slice(4)}"]` };
+        }
+        const tagName = text.slice(4, atInd);
+        const attrPart = text.slice(atInd);
+        if (attrPart.startsWith('@@') || attrPart.startsWith('@|') || attrPart.startsWith('@!')) {
+            const r = _makeMultiAttrXPath(tagName, attrPart);
+            return { by: 'xpath', value: r.value };
+        }
+        const r = _makeSingleAttrXPath(tagName, attrPart);
+        return { by: 'xpath', value: r.value };
+    }
+    if (text.startsWith('text=') && text !== 'text=') {
+        return { by: 'xpath', value: `//*[text()=${_quotesEscape(text.slice(5))}]` };
+    }
+    if (text.startsWith('text:') && text !== 'text:') {
+        return { by: 'xpath', value: `//*/text()[contains(., ${_quotesEscape(text.slice(5))})]/..` };
+    }
+    if (text.startsWith('text^') && text !== 'text^') {
+        return { by: 'xpath', value: `//*/text()[starts-with(., ${_quotesEscape(text.slice(5))})]/..` };
+    }
+    if (text.startsWith('text$') && text !== 'text$') {
+        const v = text.slice(5);
+        return { by: 'xpath', value: `//*/text()[substring(., string-length(.) - string-length(${_quotesEscape(v)}) +1) = ${_quotesEscape(v)}]/..` };
+    }
+    if ((text.startsWith('xpath:') || text.startsWith('xpath=')) && text !== 'xpath:' && text !== 'xpath=') {
+        return { by: 'xpath', value: text.slice(6) };
+    }
+    if ((text.startsWith('css:') || text.startsWith('css=')) && text !== 'css:' && text !== 'css=') {
+        return { by: 'css selector', value: text.slice(4) };
+    }
+    if (text) {
+        return { by: 'xpath', value: `//*/text()[contains(., ${_quotesEscape(text)})]/..` };
+    }
+    return { by: 'xpath', value: '//*' };
+}
+function str_to_css_loc(loc) {
+    let locBy = 'css selector';
+    const text = _preprocess(loc.trim());
+    if ((text.startsWith('@@') || text.startsWith('@|') || text.startsWith('@!')) &&
+        text !== '@@' && text !== '@|' && text !== '@!') {
+        return _makeMultiCssStr('*', text);
+    }
+    if (text.startsWith('@') && text !== '@') {
+        return _makeSingleCssStr('*', text);
+    }
+    if ((text.startsWith('tag:') || text.startsWith('tag=') || text.startsWith('tag^') || text.startsWith('tag$')) &&
+        text !== 'tag:' && text !== 'tag=' && text !== 'tag^' && text !== 'tag$') {
+        const atInd = text.indexOf('@');
+        if (atInd === -1) {
+            return { by: 'css selector', value: text.slice(4) };
+        }
+        const tagName = text.slice(4, atInd);
+        const attrPart = text.slice(atInd);
+        if (attrPart.startsWith('@@') || attrPart.startsWith('@|') || attrPart.startsWith('@!')) {
+            return _makeMultiCssStr(tagName, attrPart);
+        }
+        return _makeSingleCssStr(tagName, attrPart);
+    }
+    if (text.startsWith('text=') || text.startsWith('text:') || text.startsWith('text^') || text.startsWith('text$') ||
+        text.startsWith('xpath=') || text.startsWith('xpath:')) {
+        return str_to_xpath_loc(loc);
+    }
+    if ((text.startsWith('css:') || text.startsWith('css=')) && text !== 'css:' && text !== 'css=') {
+        return { by: 'css selector', value: text.slice(4) };
+    }
+    if (text) {
+        return str_to_xpath_loc(loc);
+    }
+    return { by: 'css selector', value: '*' };
+}
+function _makeSingleCssStr(tag, text) {
+    if (text === '@' || text.startsWith('@text()') || text.startsWith('@tx()')) {
+        return _makeSingleAttrXPathTuple(tag, text);
+    }
+    const r = text.slice(1).split(/([:=$^])/);
+    if (r[0] === 'tag()' || r[0] === 't()') {
+        return { by: 'css selector', value: r[2] || tag };
+    }
+    if (r.length === 3) {
+        const d = { '=': '', '^': '^', '$': '$', ':': '*' };
+        const attrName = r[0];
+        const symbol = r[1];
+        const val = r[2];
+        const argStr = `[${attrName}${d[symbol]}=${css_trans(val)}]`;
+        return { by: 'css selector', value: `${tag}${argStr}` };
+    }
+    const argStr = `[${css_trans(r[0])}]`;
+    return { by: 'css selector', value: `${tag}${argStr}` };
+}
+function _makeMultiCssStr(tag, text) {
+    const argList = [];
+    const parts = text.split(/(@!|@@|@\|)/).filter(Boolean);
+    if (parts.includes('@@') && parts.includes('@|')) {
+        throw new Error(`Locator symbol conflict: cannot mix @@ and @| in "${text}"`);
+    }
+    const isAnd = !parts.includes('@|');
+    let currentTag = tag;
+    for (let k = 0; k < parts.length - 1; k += 2) {
+        const prefix = parts[k];
+        const content = parts[k + 1];
+        const r = content.split(/([:=$^])/);
+        if (!r[0] || r[0].startsWith('text()') || r[0].startsWith('tx()')) {
+            return _makeMultiAttrXPathTuple(currentTag, text);
+        }
+        const ignore = prefix === '@!';
+        let argStr = '';
+        if (r.length !== 3) {
+            if (r[0] === 'tag()' || r[0] === 't()') {
+                continue;
+            }
+            argStr = `[${r[0]}]`;
+        }
+        else {
+            if (r[0] === 'tag()' || r[0] === 't()') {
+                if (currentTag === '*') {
+                    currentTag = ignore ? `:not(${r[2].toLowerCase()})` : r[2].toLowerCase();
+                }
+                else {
+                    currentTag += ignore ? `,:not(${r[2].toLowerCase()})` : `,${r[2].toLowerCase()}`;
+                }
+                continue;
+            }
+            const d = { '=': '', '^': '^', '$': '$', ':': '*' };
+            argStr = `[${r[0]}${d[r[1]]}=${css_trans(r[2])}]`;
+        }
+        if (argStr && ignore) {
+            argStr = `:not(${argStr})`;
+        }
+        if (argStr) {
+            argList.push(argStr);
+        }
+    }
+    if (isAnd) {
+        return { by: 'css selector', value: `${currentTag}${argList.join('')}` };
+    }
+    return { by: 'css selector', value: `${currentTag}${argList.join(',' + currentTag)}` };
+}
+function _makeSingleAttrXPathTuple(tag, text) {
+    const r = _makeSingleAttrXPath(tag, text);
+    return { by: 'xpath', value: r.value };
+}
+function _makeMultiAttrXPathTuple(tag, text) {
+    const r = _makeMultiAttrXPath(tag, text);
+    return { by: 'xpath', value: r.value };
+}
+function translate_loc(loc) {
+    if (loc.length !== 2) {
+        throw new Error(`Locator tuple must have exactly 2 elements, got ${loc.length}`);
+    }
+    const loc0 = loc[0].toLowerCase();
+    if (loc0 === By_1.By.XPATH) {
+        return { by: 'xpath', value: loc[1] };
+    }
+    if (loc0 === By_1.By.CSS_SELECTOR) {
+        return { by: 'css selector', value: loc[1] };
+    }
+    if (loc0 === By_1.By.ID) {
+        return { by: 'xpath', value: `//*[@id="${loc[1]}"]` };
+    }
+    if (loc0 === By_1.By.CLASS_NAME) {
+        return { by: 'xpath', value: `//*[@class="${loc[1]}"]` };
+    }
+    if (loc0 === By_1.By.LINK_TEXT) {
+        return { by: 'xpath', value: `//a[text()="${loc[1]}"]` };
+    }
+    if (loc0 === By_1.By.NAME) {
+        return { by: 'xpath', value: `//*[@name="${loc[1]}"]` };
+    }
+    if (loc0 === By_1.By.TAG_NAME) {
+        return { by: 'xpath', value: `//*[name()="${loc[1]}"]` };
+    }
+    if (loc0 === By_1.By.PARTIAL_LINK_TEXT) {
+        return { by: 'xpath', value: `//a[contains(text(),"${loc[1]}")]` };
+    }
+    throw new Error(`Invalid locator type: ${loc[0]}`);
+}
+function translate_css_loc(loc) {
+    if (loc.length !== 2) {
+        throw new Error(`Locator tuple must have exactly 2 elements, got ${loc.length}`);
+    }
+    const loc0 = loc[0].toLowerCase();
+    if (loc0 === By_1.By.XPATH) {
+        return { by: 'xpath', value: loc[1] };
+    }
+    if (loc0 === By_1.By.CSS_SELECTOR) {
+        return { by: 'css selector', value: loc[1] };
+    }
+    if (loc0 === By_1.By.ID) {
+        return { by: 'css selector', value: `#${css_trans(loc[1])}` };
+    }
+    if (loc0 === By_1.By.CLASS_NAME) {
+        return { by: 'css selector', value: `.${css_trans(loc[1])}` };
+    }
+    if (loc0 === By_1.By.LINK_TEXT) {
+        return { by: 'xpath', value: `//a[text()="${css_trans(loc[1])}"]` };
+    }
+    if (loc0 === By_1.By.NAME) {
+        return { by: 'css selector', value: `*[@name=${css_trans(loc[1])}]` };
+    }
+    if (loc0 === By_1.By.TAG_NAME) {
+        return { by: 'css selector', value: loc[1] };
+    }
+    if (loc0 === By_1.By.PARTIAL_LINK_TEXT) {
+        return { by: 'xpath', value: `//a[contains(text(),"${loc[1]}")]` };
+    }
+    throw new Error(`Invalid locator type: ${loc[0]}`);
+}
+function locator_to_tuple(loc) {
+    const text = _preprocess(loc.trim());
+    if ((text.startsWith('@@') || text.startsWith('@|') || text.startsWith('@!')) &&
+        text !== '@@' && text !== '@|' && text !== '@!') {
+        return _getArgs(text);
+    }
+    if (text.startsWith('@') && text !== '@') {
+        const arg = _getArg(text.slice(1));
+        return { and: true, args: [[arg[0], arg[1], arg[2], false]] };
+    }
+    if ((text.startsWith('tag:') || text.startsWith('tag=') || text.startsWith('tag^') || text.startsWith('tag$')) &&
+        text !== 'tag:' && text !== 'tag=' && text !== 'tag^' && text !== 'tag$') {
+        const atInd = text.indexOf('@');
+        if (atInd === -1) {
+            return { and: true, args: [['tag()', '=', text.slice(4).toLowerCase(), false]] };
+        }
+        const argsStr = text.slice(atInd);
+        if (argsStr.startsWith('@@') || argsStr.startsWith('@|') || argsStr.startsWith('@!')) {
+            const result = _getArgs(argsStr);
+            result.args.push(['tag()', '=', text.slice(4, atInd).toLowerCase(), false]);
+            return result;
+        }
+        const arg = _getArg(text.slice(atInd + 1));
+        return { and: true, args: [['tag()', '=', text.slice(4, atInd).toLowerCase(), false], [arg[0], arg[1], arg[2], false]] };
+    }
+    if (text.startsWith('text=') || text.startsWith('text:') || text.startsWith('text^') || text.startsWith('text$')) {
+        return { and: true, args: [['text()', text[4], text.slice(5), false]] };
+    }
+    return { and: true, args: [['text()', '=', loc.trim(), false]] };
+}
+function _getArgs(text) {
+    const argList = [];
+    const parts = text.split(/(@!|@@|@\|)/).filter(Boolean);
+    if (parts.includes('@@') && parts.includes('@|')) {
+        throw new Error(`Locator symbol conflict: cannot mix @@ and @|`);
+    }
+    const isAnd = !parts.includes('@|');
+    for (let k = 0; k < parts.length - 1; k += 2) {
+        const arg = _getArg(parts[k + 1]);
+        if (arg[0] !== null) {
+            argList.push([arg[0], arg[1], arg[2], parts[k] === '@!']);
+        }
+    }
+    return { and: isAnd, args: argList };
+}
+function _getArg(text) {
+    const r = text.split(/([:=$^])/);
+    if (!r[0]) {
+        return [null, null, null];
+    }
+    let name = r[0];
+    if (name === 'tx()')
+        name = 'text()';
+    if (name === 't()')
+        name = 'tag()';
+    if (r.length !== 3) {
+        return [name, null, null];
+    }
+    return [name, r[1], r[2]];
 }

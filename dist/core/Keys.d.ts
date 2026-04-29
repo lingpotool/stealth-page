@@ -1,13 +1,4 @@
-/**
- * 特殊按键常量，对应 DrissionPage 的 Keys
- */
 export declare const Keys: {
-    readonly CTRL_A: readonly ["Control", "a"];
-    readonly CTRL_C: readonly ["Control", "c"];
-    readonly CTRL_X: readonly ["Control", "x"];
-    readonly CTRL_V: readonly ["Control", "v"];
-    readonly CTRL_Z: readonly ["Control", "z"];
-    readonly CTRL_Y: readonly ["Control", "y"];
     readonly NULL: "";
     readonly CANCEL: "";
     readonly HELP: "";
@@ -36,6 +27,15 @@ export declare const Keys: {
     readonly DEL: "";
     readonly SEMICOLON: "";
     readonly EQUALS: "";
+    readonly META: "";
+    readonly COMMAND: "";
+    readonly CTRL_COMM: "" | "";
+    readonly CTRL_A: readonly ["" | "", "a"];
+    readonly CTRL_C: readonly ["" | "", "c"];
+    readonly CTRL_X: readonly ["" | "", "x"];
+    readonly CTRL_V: readonly ["" | "", "v"];
+    readonly CTRL_Z: readonly ["" | "", "z"];
+    readonly CTRL_Y: readonly ["" | "", "y"];
     readonly NUMPAD0: "";
     readonly NUMPAD1: "";
     readonly NUMPAD2: "";
@@ -63,28 +63,29 @@ export declare const Keys: {
     readonly F10: "";
     readonly F11: "";
     readonly F12: "";
-    readonly META: "";
-    readonly COMMAND: "";
 };
 export type KeyName = keyof typeof Keys;
-/**
- * 按键定义，用于 CDP Input.dispatchKeyEvent
- */
-export declare const keyDefinitions: Record<string, {
+export interface KeyDefinition {
     key: string;
     keyCode: number;
     code: string;
     text?: string;
     location?: number;
-}>;
-/**
- * 修饰键位掩码
- */
+    shiftKey?: string;
+    shiftKeyCode?: number;
+    shiftText?: string;
+    isKeypad?: boolean;
+}
+export declare const keyDefinitions: Record<string, KeyDefinition>;
 export declare const modifierBit: Record<string, number>;
-/**
- * 解析按键输入，返回修饰键和文本
- */
 export declare function keysToTyping(value: string | string[]): {
     modifier: number;
     text: string;
 };
+export declare function make_input_data(key: string, modifiers?: number, keyUp?: boolean): Record<string, any> | null;
+interface CdpPage {
+    run_cdp(cmd: string, params?: Record<string, any>): Promise<any>;
+}
+export declare function send_key(page: CdpPage, key: string, modifiers?: number): Promise<void>;
+export declare function input_text_or_keys(page: CdpPage, textOrKeys: string | (string | number)[]): Promise<void>;
+export {};

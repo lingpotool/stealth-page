@@ -1,70 +1,37 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ElementStates = void 0;
-/**
- * 元素状态检查器，对应 DrissionPage 的 ElementStates
- */
 class ElementStates {
     constructor(ele) {
         this._ele = ele;
     }
-    /**
-     * 元素是否被选中（用于 checkbox/radio）
-     */
     get is_checked() {
         return this._getBoolProperty("checked");
     }
-    /**
-     * 元素是否被选择（用于 option）
-     */
     get is_selected() {
         return this._getBoolProperty("selected");
     }
-    /**
-     * 元素是否显示
-     */
     get is_displayed() {
         return this._checkDisplayed();
     }
-    /**
-     * 元素是否可用
-     */
     get is_enabled() {
         return this._checkEnabled();
     }
-    /**
-     * 元素是否仍在 DOM 中
-     */
     get is_alive() {
         return this._checkAlive();
     }
-    /**
-     * 元素是否在视口中
-     */
     get is_in_viewport() {
         return this._checkInViewport();
     }
-    /**
-     * 元素是否整个都在视口内
-     */
     get is_whole_in_viewport() {
         return this._checkWholeInViewport();
     }
-    /**
-     * 元素是否被覆盖
-     */
     get is_covered() {
         return this._checkCovered();
     }
-    /**
-     * 元素是否可被点击
-     */
     get is_clickable() {
         return this._checkClickable();
     }
-    /**
-     * 元素是否有大小和位置
-     */
     get has_rect() {
         return this._checkHasRect();
     }
@@ -117,6 +84,12 @@ class ElementStates {
     }
     async _checkAlive() {
         try {
+            if (this._ele.backendNodeId > 0) {
+                await this._ele.session.send("DOM.describeNode", {
+                    backendNodeId: this._ele.backendNodeId,
+                });
+                return true;
+            }
             await this._ele.getObjectId();
             return true;
         }
@@ -166,21 +139,49 @@ class ElementStates {
     async _checkCovered() {
         try {
             const objectId = await this._ele.getObjectId();
-            const { result } = await this._ele.session.send("Runtime.callFunctionOn", {
+            const { result: midResult } = await this._ele.session.send("Runtime.callFunctionOn", {
                 objectId,
                 functionDeclaration: `function() {
-          if (!this) return false;
+          if (!this) return { x: -1, y: -1 };
           const rect = this.getBoundingClientRect();
-          const cx = rect.left + rect.width / 2;
-          const cy = rect.top + rect.height / 2;
-          const topEl = document.elementFromPoint(cx, cy);
-          if (!topEl) return false;
-          if (topEl === this || this.contains(topEl)) return false;
-          return true;
+          return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
         }`,
                 returnByValue: true,
             });
-            return result.value;
+            const cx = midResult.value.x;
+            const cy = midResult.value.y;
+            if (cx < 0 || cy < 0)
+                return false;
+            try {
+                const { nodeId } = await this._ele.session.send("DOM.getNodeForLocation", {
+                    x: Math.round(cx),
+                    y: Math.round(cy),
+                    ignorePointerEventsNone: true,
+                });
+                if (nodeId === this._ele.nodeId)
+                    return false;
+                const { result: containsResult } = await this._ele.session.send("Runtime.callFunctionOn", {
+                    objectId,
+                    functionDeclaration: `function(id) { 
+            const el = document.querySelector('[data-node-id="' + id + '"]');
+            return el ? this.contains(el) : false;
+          }`,
+                    arguments: [{ value: nodeId }],
+                    returnByValue: true,
+                });
+                if (containsResult.value)
+                    return false;
+                try {
+                    const { node } = await this._ele.session.send("DOM.describeNode", { nodeId });
+                    return node.backendNodeId;
+                }
+                catch {
+                    return true;
+                }
+            }
+            catch {
+                return false;
+            }
         }
         catch {
             return false;
@@ -191,9 +192,8 @@ class ElementStates {
             const displayed = await this._checkDisplayed();
             const enabled = await this._checkEnabled();
             const hasRect = await this._checkHasRect();
-            if (!displayed || !enabled || !hasRect)
+            if (!displayed || !enabled || hasRect === false)
                 return false;
-            // 对齐 DrissionPage: 还要检查 pointer-events
             const objectId = await this._ele.getObjectId();
             const { result } = await this._ele.session.send("Runtime.callFunctionOn", {
                 objectId,
@@ -214,7 +214,13 @@ class ElementStates {
                 functionDeclaration: `function() {
           if (!this) return false;
           const rect = this.getBoundingClientRect();
-          return rect.width > 0 && rect.height > 0;
+          if (rect.width === 0 && rect.height === 0) return false;
+          return [
+            {x: rect.left, y: rect.top},
+            {x: rect.right, y: rect.top},
+            {x: rect.left, y: rect.bottom},
+            {x: rect.right, y: rect.bottom}
+          ];
         }`,
                 returnByValue: true,
             });

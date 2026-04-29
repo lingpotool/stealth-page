@@ -419,20 +419,34 @@ class ElementClicker {
      */
     async _click(viewX, viewY, button = "left", count = 1) {
         for (let i = 0; i < count; i++) {
-            await this._ele.session.send("Input.dispatchMouseEvent", {
-                type: "mousePressed",
-                x: viewX,
-                y: viewY,
-                button,
-                clickCount: 1,
-            });
-            await this._ele.session.send("Input.dispatchMouseEvent", {
-                type: "mouseReleased",
-                x: viewX,
-                y: viewY,
-                button,
-                clickCount: 1,
-            });
+            try {
+                await this._ele.session.send("Input.dispatchMouseEvent", {
+                    type: "mousePressed",
+                    x: viewX,
+                    y: viewY,
+                    button,
+                    clickCount: 1,
+                });
+            }
+            catch (e) {
+                if (e?.type === 'alert_exists' || e?.type === 'timeout')
+                    break;
+                throw e;
+            }
+            try {
+                await this._ele.session.send("Input.dispatchMouseEvent", {
+                    type: "mouseReleased",
+                    x: viewX,
+                    y: viewY,
+                    button,
+                    clickCount: 1,
+                });
+            }
+            catch (e) {
+                if (e?.type === 'alert_exists' || e?.type === 'timeout')
+                    break;
+                throw e;
+            }
         }
         return this._ele;
     }

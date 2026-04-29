@@ -37,6 +37,7 @@ class Console {
                 source: params.source || "console-api",
                 level: params.level || params.type || "log",
                 text: params.text || "",
+                body: params.args || params.text || null,
                 url: params.url,
                 line: params.lineNumber,
                 column: params.columnNumber,

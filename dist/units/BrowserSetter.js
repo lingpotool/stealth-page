@@ -108,5 +108,18 @@ class BrowserSetter {
         this._browser.options.noneElementValue = onOff ? value : undefined;
         this._browser.options.noneElementEnabled = onOff;
     }
+    download_file_type(fileType) {
+        this._browser.options.downloadFileType = fileType;
+    }
+    async block_urls(urls) {
+        await this._browser.cdpSession.send("Network.setBlockedURLs", {
+            urls: urls || [],
+        });
+    }
+    async ignore_https_errors(onOff = true) {
+        await this._browser.cdpSession.send("Security.setIgnoreCertificateErrors", {
+            ignore: onOff,
+        });
+    }
 }
 exports.BrowserSetter = BrowserSetter;

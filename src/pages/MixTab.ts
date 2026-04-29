@@ -274,6 +274,48 @@ export class MixTab extends ChromiumTab {
     return this._sessionPage;
   }
 
+  get _browser_url(): string {
+    return this._browser.options.address;
+  }
+
+  get _session_url(): string | null {
+    return this._sessionUrl;
+  }
+
+  async _find_elements(
+    locator: string | Element,
+    timeout: number,
+    index?: number,
+    relative: boolean = false,
+    raiseErr?: boolean
+  ): Promise<Element | NoneElement | Element[]> {
+    if (locator instanceof Element) return locator;
+    if (index === undefined || index === null) {
+      return this.eles(locator, timeout);
+    }
+    if (index === 1) {
+      const el = await this.ele(locator, 1, timeout);
+      if (el instanceof NoneElement) {
+        if (raiseErr ?? NoneElement.raiseWhenNotFound) {
+          const { ElementNotFoundError } = await import("../errors");
+          throw new ElementNotFoundError(locator);
+        }
+      }
+      return el;
+    }
+    const all = await this.eles(locator, timeout);
+    const idx = index > 0 ? index - 1 : all.length + index;
+    const result = all[idx] ?? null;
+    if (!result) {
+      if (raiseErr ?? NoneElement.raiseWhenNotFound) {
+        const { ElementNotFoundError } = await import("../errors");
+        throw new ElementNotFoundError(locator);
+      }
+      return new NoneElement("ele", { locator, index });
+    }
+    return result;
+  }
+
   get response_headers(): any {
     return this._sessionPage.response_headers;
   }

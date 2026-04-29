@@ -35,6 +35,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.Element = void 0;
 const ShadowRoot_1 = require("./ShadowRoot");
+const NoneElement_1 = require("./NoneElement");
 const ElementScroller_1 = require("../units/ElementScroller");
 const ElementClicker_1 = require("../units/ElementClicker");
 const ElementWaiter_1 = require("../units/ElementWaiter");
@@ -43,6 +44,9 @@ const ElementRect_1 = require("../units/ElementRect");
 const ElementStates_1 = require("../units/ElementStates");
 const SelectElement_1 = require("../units/SelectElement");
 const Pseudo_1 = require("../units/Pseudo");
+const jsResult_1 = require("./jsResult");
+const Keys_1 = require("./Keys");
+const errors_1 = require("../errors");
 /**
  * 元素类，对应 DrissionPage 的 ChromiumElement
  *
@@ -300,6 +304,148 @@ class Element {
         }
         return this._pseudo;
     }
+    get tab() {
+        return this._page;
+    }
+    get owner() {
+        return this._page;
+    }
+    get timeout() {
+        return this._page?.timeout;
+    }
+    async _input_focus() {
+        try {
+            await this.focus();
+        }
+        catch {
+            try {
+                await this.click.left(true);
+            }
+            catch { }
+        }
+    }
+    async run_js_loaded(script, ...args) {
+        if (this._page && typeof this._page._wait_loaded === 'function') {
+            await this._page._wait_loaded();
+        }
+        return this.run_js(script, ...args);
+    }
+    async _run_js(script, ...args) {
+        return this.run_js(script, ...args);
+    }
+    async _get_ele_path(xpathMode = true) {
+        if (xpathMode) {
+            return this.xpath();
+        }
+        return this.css_path();
+    }
+    async _get_obj_id(nodeId, backendId) {
+        if (this._objectId)
+            return this._objectId;
+        const nid = nodeId ?? this._nodeId;
+        if (nid && nid > 0) {
+            try {
+                const { object } = await this._session.send("DOM.resolveNode", { nodeId: nid });
+                if (object?.objectId) {
+                    this._objectId = object.objectId;
+                    return object.objectId;
+                }
+            }
+            catch { }
+        }
+        const bid = backendId ?? this._backendNodeId;
+        if (bid && bid > 0) {
+            try {
+                const { object } = await this._session.send("DOM.resolveNode", { backendNodeId: bid });
+                if (object?.objectId) {
+                    this._objectId = object.objectId;
+                    return object.objectId;
+                }
+            }
+            catch { }
+        }
+        return '';
+    }
+    async _get_node_id(objId, backendId) {
+        if (this._nodeId && this._nodeId > 0)
+            return this._nodeId;
+        const oid = objId ?? this._objectId;
+        if (oid) {
+            try {
+                const { nodeId } = await this._session.send("DOM.requestNode", { objectId: oid });
+                if (nodeId && nodeId > 0) {
+                    this._nodeId = nodeId;
+                    return nodeId;
+                }
+            }
+            catch { }
+        }
+        const bid = backendId ?? this._backendNodeId;
+        if (bid && bid > 0) {
+            try {
+                const { node } = await this._session.send("DOM.describeNode", { backendNodeId: bid });
+                if (node?.nodeId && node.nodeId > 0) {
+                    this._nodeId = node.nodeId;
+                    return node.nodeId;
+                }
+            }
+            catch { }
+        }
+        return 0;
+    }
+    async _get_backend_id(nodeId) {
+        if (this._backendNodeId && this._backendNodeId > 0)
+            return this._backendNodeId;
+        const nid = nodeId ?? this._nodeId;
+        if (nid && nid > 0) {
+            try {
+                const { node } = await this._session.send("DOM.describeNode", { nodeId: nid });
+                if (node?.backendNodeId && node.backendNodeId > 0) {
+                    this._backendNodeId = node.backendNodeId;
+                    return node.backendNodeId;
+                }
+            }
+            catch { }
+        }
+        return 0;
+    }
+    async _refresh_id() {
+        if (this._backendNodeId && this._backendNodeId > 0) {
+            try {
+                const { node } = await this._session.send("DOM.describeNode", { backendNodeId: this._backendNodeId });
+                this._nodeId = node.nodeId;
+                this._backendNodeId = node.backendNodeId;
+                this._objectId = null;
+            }
+            catch { }
+        }
+    }
+    async _find_elements(locator, timeout, index, relative = false, raiseErr) {
+        if (index === undefined || index === null) {
+            return this.eles(locator);
+        }
+        if (index === 1) {
+            const el = await this.ele(locator, 1);
+            if (el instanceof NoneElement_1.NoneElement) {
+                if (raiseErr ?? NoneElement_1.NoneElement.raiseWhenNotFound) {
+                    const { ElementNotFoundError } = await Promise.resolve().then(() => __importStar(require("../errors")));
+                    throw new ElementNotFoundError(locator);
+                }
+            }
+            return el;
+        }
+        const all = await this.eles(locator);
+        const idx = index > 0 ? index - 1 : all.length + index;
+        const result = all[idx] ?? null;
+        if (!result) {
+            if (raiseErr ?? NoneElement_1.NoneElement.raiseWhenNotFound) {
+                const { ElementNotFoundError } = await Promise.resolve().then(() => __importStar(require("../errors")));
+                throw new ElementNotFoundError(locator);
+            }
+            return new NoneElement_1.NoneElement("ele", { locator, index });
+        }
+        return result;
+    }
     // ========== 基础属性 ==========
     /**
      * 元素标签名
@@ -345,16 +491,38 @@ class Element {
         const objectId = await this.getObjectId();
         const { result } = await this._session.send("Runtime.callFunctionOn", {
             objectId,
-            functionDeclaration: "function() { return (this && this.innerText) || ''; }",
+            functionDeclaration: `function() {
+        function toSimple(el) {
+          var children = [];
+          for (var i = 0; i < el.childNodes.length; i++) {
+            var node = el.childNodes[i];
+            if (node.nodeType === 3) {
+              var t = node.textContent;
+              if (t) children.push(t);
+            } else if (node.nodeType === 1) {
+              children.push(toSimple(node));
+            }
+          }
+          return { tag: el.tagName ? el.tagName.toLowerCase() : '', children: children };
+        }
+        return toSimple(this);
+      }`,
             returnByValue: true,
         });
-        return result.value;
+        if (result?.value && typeof result.value === 'object') {
+            const { get_ele_txt } = await Promise.resolve().then(() => __importStar(require("./web")));
+            return get_ele_txt(result.value);
+        }
+        if (typeof result?.value === 'string') {
+            return result.value;
+        }
+        return '';
     }
     async raw_text() {
         const objectId = await this.getObjectId();
         const { result } = await this._session.send("Runtime.callFunctionOn", {
             objectId,
-            functionDeclaration: "function() { return (this && this.textContent) || ''; }",
+            functionDeclaration: "function() { return (this && this.innerText) || ''; }",
             returnByValue: true,
         });
         return result.value;
@@ -403,6 +571,19 @@ class Element {
         return result.value;
     }
     async attrs() {
+        try {
+            if (this._nodeId > 0) {
+                const { attributes } = await this._session.send("DOM.getAttributes", {
+                    nodeId: this._nodeId,
+                });
+                const result = {};
+                for (let i = 0; i < attributes.length - 1; i += 2) {
+                    result[attributes[i]] = attributes[i + 1];
+                }
+                return result;
+            }
+        }
+        catch { }
         const objectId = await this.getObjectId();
         const { result } = await this._session.send("Runtime.callFunctionOn", {
             objectId,
@@ -465,6 +646,25 @@ class Element {
             returnByValue: true,
         });
         return result.value;
+    }
+    async comments() {
+        return this.eles('xpath:.//comment()').then(async (elements) => {
+            const result = [];
+            for (const el of elements) {
+                try {
+                    const objectId = await el.getObjectId();
+                    const { result: r } = await this._session.send("Runtime.callFunctionOn", {
+                        objectId,
+                        functionDeclaration: "function() { return this.textContent || ''; }",
+                        returnByValue: true,
+                    });
+                    if (r.value)
+                        result.push(r.value);
+                }
+                catch { }
+            }
+            return result;
+        });
     }
     /**
      * 返回元素的 href 或 src 属性
@@ -558,6 +758,7 @@ class Element {
             functionDeclaration: "function(n) { if (this && this.removeAttribute) { this.removeAttribute(n); } }",
             arguments: [{ value: name }],
         });
+        return this;
     }
     // ========== 状态检查方法（保持向后兼容） ==========
     async is_displayed() {
@@ -580,70 +781,66 @@ class Element {
     /**
      * 输入文本
      */
-    async input(value, clear = false, byJs = false) {
-        // 对齐 DrissionPage: 自动检测 file input
+    async input(value, clear = true, byJs = false) {
         try {
             const tag = await this.tag_name();
             if (tag === "input") {
                 const type = await this.attr("type");
                 if (type === "file") {
-                    return this.set_file_input(value);
+                    return this.set_file_input(typeof value === 'string' ? value : value.join('\n'));
                 }
             }
         }
-        catch { /* 忽略 */ }
-        if (!byJs) {
-            // 模拟按键方式
-            await this.focus();
-            if (clear) {
-                await this.clear();
-            }
-            const page = this.getPage();
-            if (page) {
-                // 检查是否是组合键（tuple 在 JS 中用数组表示）
-                if (Array.isArray(value)) {
-                    for (const key of value) {
-                        await page.cdpSession.send("Input.dispatchKeyEvent", {
-                            type: "keyDown",
-                            key,
-                        });
-                        await page.cdpSession.send("Input.dispatchKeyEvent", {
-                            type: "keyUp",
-                            key,
-                        });
-                    }
-                    return this;
-                }
-                // 普通文本输入
-                for (const char of String(value)) {
-                    await page.cdpSession.send("Input.dispatchKeyEvent", {
-                        type: "keyDown",
-                        text: char,
-                    });
-                    await page.cdpSession.send("Input.dispatchKeyEvent", {
-                        type: "keyUp",
-                        text: char,
-                    });
-                }
-                return this;
-            }
+        catch { }
+        await this.wait.clickable();
+        if (clear) {
+            await this.clear(byJs);
         }
-        // js 方式
+        if (byJs) {
+            const objectId = await this.getObjectId();
+            await this._session.send("Runtime.callFunctionOn", {
+                objectId,
+                functionDeclaration: `function(v) { 
+          var el = this; 
+          if (!el) return; 
+          el.focus && el.focus(); 
+          if (typeof el.value !== 'undefined') {
+            el.value = v; 
+          } else if (el.contentEditable === 'true') {
+            el.innerText = v;
+          }
+          if (typeof Event === 'function') { 
+            el.dispatchEvent(new Event('input', { bubbles: true })); 
+            el.dispatchEvent(new Event('change', { bubbles: true })); 
+          } 
+        }`,
+                arguments: [{ value: typeof value === 'string' ? value : value.join('') }],
+            });
+            return this;
+        }
+        const page = this.getPage();
+        if (page) {
+            await (0, Keys_1.input_text_or_keys)(page, value);
+            return this;
+        }
         const objectId = await this.getObjectId();
         await this._session.send("Runtime.callFunctionOn", {
             objectId,
-            functionDeclaration: `function(v, c) { 
+            functionDeclaration: `function(v) { 
         var el = this; 
         if (!el) return; 
         el.focus && el.focus(); 
-        if (c) el.value = ''; 
-        el.value = v; 
+        if (typeof el.value !== 'undefined') {
+          el.value = v; 
+        } else if (el.contentEditable === 'true') {
+          el.innerText = v;
+        }
         if (typeof Event === 'function') { 
           el.dispatchEvent(new Event('input', { bubbles: true })); 
           el.dispatchEvent(new Event('change', { bubbles: true })); 
         } 
       }`,
-            arguments: [{ value: String(value) }, { value: clear }],
+            arguments: [{ value: typeof value === 'string' ? value : value.join('') }],
         });
         return this;
     }
@@ -652,18 +849,16 @@ class Element {
      */
     async clear(byJs = false) {
         if (!byJs) {
-            // 模拟按键方式：ctrl+a + delete
             await this.focus();
             const page = this.getPage();
             if (page) {
-                await page.cdpSession.send("Input.dispatchKeyEvent", { type: "keyDown", key: "a", code: "KeyA", modifiers: 2 }); // ctrl+a
+                await page.cdpSession.send("Input.dispatchKeyEvent", { type: "keyDown", key: "a", code: "KeyA", modifiers: 2 });
                 await page.cdpSession.send("Input.dispatchKeyEvent", { type: "keyUp", key: "a", code: "KeyA", modifiers: 2 });
                 await page.cdpSession.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Delete", code: "Delete" });
                 await page.cdpSession.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Delete", code: "Delete" });
-                return;
+                return this;
             }
         }
-        // js 方式
         const objectId = await this.getObjectId();
         await this._session.send("Runtime.callFunctionOn", {
             objectId,
@@ -676,16 +871,16 @@ class Element {
         }
       }`,
         });
+        return this;
     }
     /**
      * 获取焦点（对齐 DrissionPage: 优先使用 DOM.focus + backendNodeId）
      */
     async focus() {
-        // 优先使用 CDP DOM.focus（更可靠）
         if (this._backendNodeId > 0) {
             try {
                 await this._session.send("DOM.focus", { backendNodeId: this._backendNodeId });
-                return;
+                return this;
             }
             catch { /* fallback to JS */ }
         }
@@ -694,35 +889,40 @@ class Element {
             objectId,
             functionDeclaration: "function() { if (this && this.focus) { this.focus(); } }",
         });
+        return this;
     }
     /**
      * 鼠标悬停
      */
     async hover(offsetX, offsetY) {
+        if (this._page && this._page.actions) {
+            await this._page.actions.move_to(this, offsetX, offsetY);
+            return this;
+        }
+        let x, y;
         if (offsetX !== undefined || offsetY !== undefined) {
-            // 使用偏移量，相对于元素左上角
             const loc = await this.rect.viewport_location();
             const size = await this.size();
-            const x = loc.x + (offsetX ?? size.width / 2);
-            const y = loc.y + (offsetY ?? size.height / 2);
-            await this._session.send("Input.dispatchMouseEvent", {
-                type: "mouseMoved",
-                x,
-                y,
-            });
+            x = loc.x + (offsetX ?? size.width / 2);
+            y = loc.y + (offsetY ?? size.height / 2);
         }
         else {
             const loc = await this.rect.viewport_midpoint();
-            await this._session.send("Input.dispatchMouseEvent", {
-                type: "mouseMoved",
-                x: loc.x,
-                y: loc.y,
-            });
+            x = loc.x;
+            y = loc.y;
         }
+        await this._session.send("Input.dispatchMouseEvent", {
+            type: "mouseMoved",
+            x,
+            y,
+        });
+        const objectId = await this.getObjectId();
+        await this._session.send("Runtime.callFunctionOn", {
+            objectId,
+            functionDeclaration: `function() { this.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); this.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true })); }`,
+        });
+        return this;
     }
-    /**
-     * 双击
-     */
     async double_click() {
         await this.click.multi(2);
     }
@@ -776,17 +976,26 @@ class Element {
      * 拖拽到相对位置
      */
     async drag(offsetX = 0, offsetY = 0, duration = 0.5) {
+        if (this._page && this._page.actions) {
+            const loc = await this.rect.viewport_midpoint();
+            await this._page.actions.mouse_down(loc.x, loc.y);
+            await this._page.actions.mouse_move(loc.x + offsetX, loc.y + offsetY);
+            await this._page.actions.mouse_up(loc.x + offsetX, loc.y + offsetY);
+            return this;
+        }
         const loc = await this.rect.viewport_midpoint();
         const startX = loc.x;
         const startY = loc.y;
         const endX = startX + offsetX;
         const endY = startY + offsetY;
         await this._performDrag(startX, startY, endX, endY, duration);
+        return this;
     }
-    /**
-     * 拖拽到目标元素或坐标
-     */
     async drag_to(target, duration = 0.5) {
+        if (this._page && this._page.actions) {
+            await this._page.actions.drag_and_drop((await this.rect.viewport_midpoint()).x, (await this.rect.viewport_midpoint()).y, target instanceof Element ? (await target.rect.viewport_midpoint()).x : target.x, target instanceof Element ? (await target.rect.viewport_midpoint()).y : target.y);
+            return this;
+        }
         const loc = await this.rect.viewport_midpoint();
         let endX, endY;
         if (target instanceof Element) {
@@ -799,6 +1008,7 @@ class Element {
             endY = target.y;
         }
         await this._performDrag(loc.x, loc.y, endX, endY, duration);
+        return this;
     }
     async _performDrag(startX, startY, endX, endY, duration) {
         const steps = Math.max(1, Math.floor(duration * 20));
@@ -847,10 +1057,25 @@ class Element {
     // ========== DOM 导航方法 ==========
     async parent(levelOrLoc = 1, _index = 1) {
         if (typeof levelOrLoc === "number") {
-            return this._getParentByLevel(levelOrLoc);
+            const result = await this._getParentByLevel(levelOrLoc);
+            if (!result) {
+                if (NoneElement_1.NoneElement.raiseWhenNotFound) {
+                    const { ElementNotFoundError } = await Promise.resolve().then(() => __importStar(require("../errors")));
+                    throw new ElementNotFoundError("parent");
+                }
+                return new NoneElement_1.NoneElement("parent", { level: levelOrLoc });
+            }
+            return result;
         }
-        // TODO: 支持定位符查找父元素
-        return this._getParentByLevel(1);
+        const result = await this._getParentByLevel(1);
+        if (!result) {
+            if (NoneElement_1.NoneElement.raiseWhenNotFound) {
+                const { ElementNotFoundError } = await Promise.resolve().then(() => __importStar(require("../errors")));
+                throw new ElementNotFoundError("parent");
+            }
+            return new NoneElement_1.NoneElement("parent", { locator: levelOrLoc });
+        }
+        return result;
     }
     async _getParentByLevel(level) {
         const objectId = await this.getObjectId();
@@ -873,13 +1098,23 @@ class Element {
         });
         return this._createElement(nodeId);
     }
-    async child(locatorOrIndex = 1, index = 1) {
+    async child(locatorOrIndex = 1, index = 1, eleOnly = true) {
         if (typeof locatorOrIndex === "number") {
-            return this._getChildByIndex(locatorOrIndex);
+            if (eleOnly) {
+                return this._getChildByIndex(locatorOrIndex);
+            }
+            return this._getChildNodeByIndex(locatorOrIndex);
         }
-        // 使用定位符查找
-        const children = await this.children(locatorOrIndex);
-        return children[index - 1] ?? null;
+        const children = await this.children(locatorOrIndex, eleOnly);
+        const result = children[index - 1] ?? null;
+        if (!result) {
+            if (NoneElement_1.NoneElement.raiseWhenNotFound) {
+                const { ElementNotFoundError } = await Promise.resolve().then(() => __importStar(require("../errors")));
+                throw new ElementNotFoundError(locatorOrIndex);
+            }
+            return new NoneElement_1.NoneElement("child", { locator: locatorOrIndex, index });
+        }
+        return result;
     }
     async _getChildByIndex(idx) {
         const objectId = await this.getObjectId();
@@ -887,8 +1122,8 @@ class Element {
             objectId,
             functionDeclaration: `function(i) { 
         const children = Array.from(this.children);
-        const idx = i > 0 ? i - 1 : children.length + i;
-        return children[idx] || null;
+        const index = i > 0 ? i - 1 : children.length + i;
+        return children[index] || null;
       }`,
             arguments: [{ value: idx }],
         });
@@ -900,38 +1135,92 @@ class Element {
         });
         return this._createElement(nodeId);
     }
-    async children(locator = "") {
+    async _getChildNodeByIndex(idx) {
+        const objectId = await this.getObjectId();
+        const { result } = await this._session.send("Runtime.callFunctionOn", {
+            objectId,
+            functionDeclaration: `function(i) { 
+        const nodes = Array.from(this.childNodes).filter(n => n.nodeType === 1 || n.nodeType === 3 || n.nodeType === 8);
+        const index = i > 0 ? i - 1 : nodes.length + i;
+        return nodes[index] || null;
+      }`,
+            arguments: [{ value: idx }],
+        });
+        if (!result.objectId)
+            return null;
+        await this._ensureDomTree();
+        const { nodeId } = await this._session.send("DOM.requestNode", {
+            objectId: result.objectId,
+        });
+        return this._createElement(nodeId);
+    }
+    async children(locator = "", eleOnly = true) {
         if (locator) {
             return this.eles(locator);
         }
         const objectId = await this.getObjectId();
+        const js = eleOnly
+            ? "function() { return this.children ? this.children.length : 0; }"
+            : "function() { return this.childNodes ? Array.from(this.childNodes).filter(n => n.nodeType === 1 || n.nodeType === 3 || n.nodeType === 8).length : 0; }";
         const { result } = await this._session.send("Runtime.callFunctionOn", {
             objectId,
-            functionDeclaration: "function() { return this.children ? this.children.length : 0; }",
+            functionDeclaration: js,
             returnByValue: true,
         });
         const count = result.value;
         const elements = [];
         for (let i = 1; i <= count; i++) {
-            const child = await this._getChildByIndex(i);
+            const child = eleOnly ? await this._getChildByIndex(i) : await this._getChildNodeByIndex(i);
             if (child)
                 elements.push(child);
         }
         return elements;
     }
-    async next(locator = "", index = 1) {
+    async next(locator = "", index = 1, eleOnly = true) {
         if (locator) {
-            const nexts = await this.nexts(locator);
-            return nexts[index - 1] ?? null;
+            const nexts = await this.nexts(locator, eleOnly);
+            const result = nexts[index - 1] ?? null;
+            if (!result) {
+                if (NoneElement_1.NoneElement.raiseWhenNotFound) {
+                    const { ElementNotFoundError } = await Promise.resolve().then(() => __importStar(require("../errors")));
+                    throw new ElementNotFoundError(locator);
+                }
+                return new NoneElement_1.NoneElement("next", { locator, index });
+            }
+            return result;
         }
-        return this._getSibling("nextElementSibling", index);
+        const result = await this._getSibling(eleOnly ? "nextElementSibling" : "nextSibling", index);
+        if (!result) {
+            if (NoneElement_1.NoneElement.raiseWhenNotFound) {
+                const { ElementNotFoundError } = await Promise.resolve().then(() => __importStar(require("../errors")));
+                throw new ElementNotFoundError("next sibling");
+            }
+            return new NoneElement_1.NoneElement("next", { index });
+        }
+        return result;
     }
-    async prev(locator = "", index = 1) {
+    async prev(locator = "", index = 1, eleOnly = true) {
         if (locator) {
-            const prevs = await this.prevs(locator);
-            return prevs[index - 1] ?? null;
+            const prevs = await this.prevs(locator, eleOnly);
+            const result = prevs[index - 1] ?? null;
+            if (!result) {
+                if (NoneElement_1.NoneElement.raiseWhenNotFound) {
+                    const { ElementNotFoundError } = await Promise.resolve().then(() => __importStar(require("../errors")));
+                    throw new ElementNotFoundError(locator);
+                }
+                return new NoneElement_1.NoneElement("prev", { locator, index });
+            }
+            return result;
         }
-        return this._getSibling("previousElementSibling", index);
+        const result = await this._getSibling(eleOnly ? "previousElementSibling" : "previousSibling", index);
+        if (!result) {
+            if (NoneElement_1.NoneElement.raiseWhenNotFound) {
+                const { ElementNotFoundError } = await Promise.resolve().then(() => __importStar(require("../errors")));
+                throw new ElementNotFoundError("prev sibling");
+            }
+            return new NoneElement_1.NoneElement("prev", { index });
+        }
+        return result;
     }
     async _getSibling(direction, count) {
         const objectId = await this.getObjectId();
@@ -954,48 +1243,81 @@ class Element {
         });
         return this._createElement(nodeId);
     }
-    async nexts(locator = "") {
-        return this._getSiblings("nextElementSibling", locator);
+    async nexts(locator = "", eleOnly = true) {
+        const direction = eleOnly ? "nextElementSibling" : "nextSibling";
+        return this._getSiblings(direction, locator, eleOnly);
     }
-    async prevs(locator = "") {
-        return this._getSiblings("previousElementSibling", locator);
+    async prevs(locator = "", eleOnly = true) {
+        const direction = eleOnly ? "previousElementSibling" : "previousSibling";
+        return this._getSiblings(direction, locator, eleOnly);
     }
-    async _getSiblings(direction, locator) {
+    async _getSiblings(direction, locator, eleOnly = true) {
         const objectId = await this.getObjectId();
+        const countJs = eleOnly
+            ? `function(dir, selector) {
+          const results = [];
+          let el = this[dir];
+          while (el) {
+            if (!selector || (el.matches && el.matches(selector))) {
+              results.push(1);
+            }
+            el = el[dir];
+          }
+          return results.length;
+        }`
+            : `function(dir, selector) {
+          const results = [];
+          let el = this[dir];
+          while (el) {
+            if (el.nodeType === 1 && selector && el.matches && el.matches(selector)) {
+              results.push(1);
+            } else if (!selector) {
+              results.push(1);
+            }
+            el = el[dir];
+          }
+          return results.length;
+        }`;
         const { result } = await this._session.send("Runtime.callFunctionOn", {
             objectId,
-            functionDeclaration: `function(dir, selector) {
-        const results = [];
-        let el = this[dir];
-        while (el) {
-          if (!selector || el.matches(selector)) {
-            results.push(1); // 占位
-          }
-          el = el[dir];
-        }
-        return results.length;
-      }`,
+            functionDeclaration: countJs,
             arguments: [{ value: direction }, { value: locator }],
             returnByValue: true,
         });
         const count = result.value;
         const elements = [];
-        // 逐个获取
-        for (let i = 0; i < count; i++) {
-            const { result: sibResult } = await this._session.send("Runtime.callFunctionOn", {
-                objectId,
-                functionDeclaration: `function(dir, selector, idx) {
+        const getItemJs = eleOnly
+            ? `function(dir, selector, idx) {
           let el = this[dir];
           let found = 0;
           while (el) {
-            if (!selector || el.matches(selector)) {
+            if (!selector || (el.matches && el.matches(selector))) {
               if (found === idx) return el;
               found++;
             }
             el = el[dir];
           }
           return null;
-        }`,
+        }`
+            : `function(dir, selector, idx) {
+          let el = this[dir];
+          let found = 0;
+          while (el) {
+            if (el.nodeType === 1 && selector && el.matches && el.matches(selector)) {
+              if (found === idx) return el;
+              found++;
+            } else if (!selector) {
+              if (found === idx) return el;
+              found++;
+            }
+            el = el[dir];
+          }
+          return null;
+        }`;
+        for (let i = 0; i < count; i++) {
+            const { result: sibResult } = await this._session.send("Runtime.callFunctionOn", {
+                objectId,
+                functionDeclaration: getItemJs,
                 arguments: [{ value: direction }, { value: locator }, { value: i }],
             });
             if (sibResult.objectId) {
@@ -1008,15 +1330,31 @@ class Element {
         }
         return elements;
     }
-    async before(locator = "", index = 1) {
-        const befores = await this.befores(locator);
-        return befores[index - 1] ?? null;
+    async before(locator = "", index = 1, eleOnly = true) {
+        const befores = await this.befores(locator, eleOnly);
+        const result = befores[index - 1] ?? null;
+        if (!result) {
+            if (NoneElement_1.NoneElement.raiseWhenNotFound) {
+                const { ElementNotFoundError } = await Promise.resolve().then(() => __importStar(require("../errors")));
+                throw new ElementNotFoundError(locator || "before");
+            }
+            return new NoneElement_1.NoneElement("before", { locator, index });
+        }
+        return result;
     }
-    async after(locator = "", index = 1) {
-        const afters = await this.afters(locator);
-        return afters[index - 1] ?? null;
+    async after(locator = "", index = 1, eleOnly = true) {
+        const afters = await this.afters(locator, eleOnly);
+        const result = afters[index - 1] ?? null;
+        if (!result) {
+            if (NoneElement_1.NoneElement.raiseWhenNotFound) {
+                const { ElementNotFoundError } = await Promise.resolve().then(() => __importStar(require("../errors")));
+                throw new ElementNotFoundError(locator || "after");
+            }
+            return new NoneElement_1.NoneElement("after", { locator, index });
+        }
+        return result;
     }
-    async befores(locator = "") {
+    async befores(locator = "", eleOnly = true) {
         // 获取文档中此元素之前的所有匹配元素
         const objectId = await this.getObjectId();
         const { result } = await this._session.send("Runtime.callFunctionOn", {
@@ -1044,7 +1382,7 @@ class Element {
         });
         return nodeIds.slice(0, count).map(nodeId => this._createElement(nodeId));
     }
-    async afters(locator = "") {
+    async afters(locator = "", eleOnly = true) {
         const objectId = await this.getObjectId();
         const { result } = await this._session.send("Runtime.callFunctionOn", {
             objectId,
@@ -1084,6 +1422,22 @@ class Element {
     }
     // ========== Shadow DOM ==========
     async shadow_root() {
+        await this._ensureBackendNodeId();
+        if (this._nodeId > 0) {
+            try {
+                const { node } = await this._session.send("DOM.describeNode", {
+                    nodeId: this._nodeId,
+                });
+                if (node.shadowRoots && node.shadowRoots.length > 0) {
+                    const shadowBackendId = node.shadowRoots[0].backendNodeId;
+                    const { object } = await this._session.send("DOM.resolveNode", {
+                        backendNodeId: shadowBackendId,
+                    });
+                    return new ShadowRoot_1.ShadowRoot(this, { objId: object.objectId, backendId: shadowBackendId });
+                }
+            }
+            catch { /* fallback */ }
+        }
         const objectId = await this.getObjectId();
         const { result } = await this._session.send("Runtime.callFunctionOn", {
             objectId,
@@ -1091,7 +1445,6 @@ class Element {
         });
         if (!result.objectId || result.subtype === "null")
             return null;
-        // 获取 backendNodeId
         await this._ensureDomTree();
         try {
             const { nodeId } = await this._session.send("DOM.requestNode", {
@@ -1103,7 +1456,7 @@ class Element {
                     const desc = await this._session.send("DOM.describeNode", { nodeId });
                     backendId = desc.node.backendNodeId;
                 }
-                catch { /* 忽略 */ }
+                catch { }
             }
             return new ShadowRoot_1.ShadowRoot(this, { objId: result.objectId, backendId });
         }
@@ -1118,12 +1471,53 @@ class Element {
         return this.shadow_root();
     }
     // ========== 元素查找 ==========
-    async ele(locator, index = 1) {
+    async ele(locator, index = 1, timeout) {
+        if (timeout !== undefined && timeout > 0) {
+            const deadline = Date.now() + timeout * 1000;
+            while (true) {
+                const result = await this._eleOnce(locator, index);
+                if (result)
+                    return result;
+                if (Date.now() >= deadline)
+                    break;
+                await new Promise(r => setTimeout(r, 200));
+            }
+            if (NoneElement_1.NoneElement.raiseWhenNotFound) {
+                const { ElementNotFoundError } = await Promise.resolve().then(() => __importStar(require("../errors")));
+                throw new ElementNotFoundError(locator);
+            }
+            return new NoneElement_1.NoneElement("ele", { locator, index });
+        }
+        const result = await this._eleOnce(locator, index);
+        if (!result) {
+            if (NoneElement_1.NoneElement.raiseWhenNotFound) {
+                const { ElementNotFoundError } = await Promise.resolve().then(() => __importStar(require("../errors")));
+                throw new ElementNotFoundError(locator);
+            }
+            return new NoneElement_1.NoneElement("ele", { locator, index });
+        }
+        return result;
+    }
+    async _eleOnce(locator, index = 1) {
         const elements = await this.eles(locator);
         const idx = index > 0 ? index - 1 : elements.length + index;
         return elements[idx] ?? null;
     }
-    async eles(locator) {
+    async eles(locator, timeout) {
+        if (timeout !== undefined && timeout > 0) {
+            const deadline = Date.now() + timeout * 1000;
+            while (true) {
+                const result = await this._elesOnce(locator);
+                if (result.length > 0)
+                    return result;
+                if (Date.now() >= deadline)
+                    break;
+                await new Promise(r => setTimeout(r, 200));
+            }
+        }
+        return this._elesOnce(locator);
+    }
+    async _elesOnce(locator) {
         const { parseLocator } = await Promise.resolve().then(() => __importStar(require("./locator")));
         const parsed = parseLocator(locator);
         const objectId = await this.getObjectId();
@@ -1172,11 +1566,9 @@ class Element {
     }
     async _elesByXPath(xpath) {
         const objectId = await this.getObjectId();
-        const escapedXpath = xpath.replace(/'/g, "\\'");
-        // 对齐 DrissionPage: 使用 Runtime.callFunctionOn + document.evaluate，一次性获取所有结果
-        const js = `function(){
+        const js = `function(xpath){
       let a=[];
-      let e=document.evaluate('${escapedXpath}',this,null,7,null);
+      let e=document.evaluate(xpath,this,null,7,null);
       for(let i=0;i<e.snapshotLength;i++){
         let node=e.snapshotItem(i);
         if(node.nodeType===1){a.push(node);}
@@ -1188,6 +1580,7 @@ class Element {
         const { result } = await this._session.send("Runtime.callFunctionOn", {
             objectId,
             functionDeclaration: js,
+            arguments: [{ value: xpath }],
             returnByValue: false,
             awaitPromise: true,
             userGesture: true,
@@ -1271,7 +1664,9 @@ class Element {
     }
     // ========== JavaScript 执行 ==========
     async run_js(script, ...args) {
-        // 检查最后一个参数是否为选项对象 { asExpr, timeout }
+        if (this._page && this._page._has_alert) {
+            throw new errors_1.AlertExistsError();
+        }
         let asExpr = false;
         let timeout;
         if (args.length > 0 && typeof args[args.length - 1] === 'object' && args[args.length - 1] !== null
@@ -1280,18 +1675,20 @@ class Element {
             asExpr = opts.asExpr ?? false;
             timeout = opts.timeout;
         }
+        const endTime = timeout !== undefined ? Date.now() + timeout * 1000 : undefined;
         if (asExpr) {
             const params = {
                 expression: script,
-                returnByValue: true,
+                returnByValue: false,
+                awaitPromise: true,
+                userGesture: true,
             };
             if (timeout !== undefined)
                 params.timeout = timeout * 1000;
             const { result } = await this._session.send("Runtime.evaluate", params);
-            return result.value;
+            return (0, jsResult_1.parseJsResult)({ session: this._session, getPage: () => this._page }, result, endTime);
         }
         const objectId = await this.getObjectId();
-        // 对齐 DrissionPage: 如果不是函数形式，包装成函数
         let funcDecl = script.trim();
         if (!funcDecl.startsWith("function") && !funcDecl.startsWith("(") && !funcDecl.startsWith("async")) {
             funcDecl = `function(){${funcDecl}}`;
@@ -1299,18 +1696,17 @@ class Element {
         const params = {
             objectId,
             functionDeclaration: funcDecl,
-            arguments: args.map(a => ({ value: a })),
-            returnByValue: true,
+            arguments: args.map(a => (0, jsResult_1.convertArgument)(a)),
+            returnByValue: false,
             awaitPromise: true,
             userGesture: true,
         };
         if (timeout !== undefined)
             params.timeout = timeout * 1000;
         const { result } = await this._session.send("Runtime.callFunctionOn", params);
-        return result.value;
+        return (0, jsResult_1.parseJsResult)({ session: this._session, getPage: () => this._page }, result, endTime);
     }
     async run_async_js(script, ...args) {
-        // 检查最后一个参数是否为选项对象 { asExpr }
         let asExpr = false;
         if (args.length > 0 && typeof args[args.length - 1] === 'object' && args[args.length - 1] !== null
             && 'asExpr' in args[args.length - 1]) {
@@ -1331,7 +1727,7 @@ class Element {
         await this._session.send("Runtime.callFunctionOn", {
             objectId,
             functionDeclaration: funcDecl,
-            arguments: args.map(a => ({ value: a })),
+            arguments: args.map(a => (0, jsResult_1.convertArgument)(a)),
             awaitPromise: false,
             userGesture: true,
         });
@@ -1360,18 +1756,41 @@ class Element {
     }
     async get_screenshot(path, name, asBytes, asBase64, scrollToCenter = true) {
         if (scrollToCenter) {
-            await this.scroll.to_center();
+            try {
+                await this.scroll.to_center();
+            }
+            catch { }
         }
-        const buffer = await this.screenshot(path ? `${path}/${name || "screenshot.png"}` : undefined);
-        if (asBase64) {
-            return buffer.toString("base64");
-        }
+        let picType = 'png';
         if (asBytes) {
-            return buffer;
+            picType = asBytes === true ? 'png' : (asBytes === 'jpg' ? 'jpeg' : asBytes);
         }
+        else if (asBase64) {
+            picType = asBase64 === true ? 'png' : (asBase64 === 'jpg' ? 'jpeg' : asBase64);
+        }
+        await this._ensureBackendNodeId();
+        const { model } = await this._session.send("DOM.getBoxModel", { backendNodeId: this._backendNodeId });
+        const { data } = await this._session.send("Page.captureScreenshot", {
+            format: picType,
+            clip: {
+                x: model.content[0],
+                y: model.content[1],
+                width: model.content[4] - model.content[0],
+                height: model.content[5] - model.content[1],
+                scale: 1,
+            },
+        });
+        const buffer = Buffer.from(data, "base64");
+        if (asBase64)
+            return data;
+        if (asBytes)
+            return buffer;
         if (path) {
-            const fullPath = `${path}/${name || "screenshot.png"}`;
             const fs = await Promise.resolve().then(() => __importStar(require("fs")));
+            const pathModule = await Promise.resolve().then(() => __importStar(require("path")));
+            const ext = `.${picType === 'jpeg' ? 'jpg' : picType}`;
+            const fileName = name || `screenshot${ext}`;
+            const fullPath = pathModule.join(path, fileName);
             fs.writeFileSync(fullPath, buffer);
             return fullPath;
         }
@@ -1445,16 +1864,43 @@ class Element {
         if (!src) {
             throw new Error("Element has no src attribute");
         }
-        // 如果是 Buffer，直接保存
+        const fs = await Promise.resolve().then(() => __importStar(require("fs")));
+        const pathModule = await Promise.resolve().then(() => __importStar(require("path")));
         if (Buffer.isBuffer(src)) {
-            const fs = await Promise.resolve().then(() => __importStar(require("fs")));
-            const filePath = path ? `${path}/${name || "file"}` : name || "file";
+            const srcAttr = (await this.attr("src")) || "";
+            const urlName = srcAttr.split("/").pop()?.split("?")[0] || "file";
+            const fileName = name || urlName;
+            const dir = path || ".";
+            fs.mkdirSync(dir, { recursive: true });
+            const filePath = pathModule.join(dir, fileName);
             fs.writeFileSync(filePath, src);
             return filePath;
         }
-        // 如果是 URL，需要下载
-        // TODO: 实现 URL 下载
-        return src;
+        if (typeof src === "string" && (src.startsWith("http://") || src.startsWith("https://"))) {
+            try {
+                const response = await fetch(src);
+                const buffer = Buffer.from(await response.arrayBuffer());
+                const urlName = src.split("/").pop()?.split("?")[0] || "file";
+                const fileName = name || urlName;
+                const dir = path || ".";
+                fs.mkdirSync(dir, { recursive: true });
+                const filePath = pathModule.join(dir, fileName);
+                fs.writeFileSync(filePath, buffer);
+                return filePath;
+            }
+            catch {
+                return src;
+            }
+        }
+        if (typeof src === "string") {
+            const fileName = name || "file";
+            const dir = path || ".";
+            fs.mkdirSync(dir, { recursive: true });
+            const filePath = pathModule.join(dir, fileName);
+            fs.writeFileSync(filePath, src);
+            return filePath;
+        }
+        return String(src);
     }
     /**
      * 设置文件输入框的文件路径
@@ -1468,6 +1914,9 @@ class Element {
         });
         return this;
     }
+    async _set_file_input(files) {
+        await this.set_file_input(files);
+    }
     // ========== 方向定位方法 ==========
     /**
      * 获取元素右边的指定元素
@@ -1475,21 +1924,12 @@ class Element {
     async east(locOrPixel, index = 1) {
         return this._getRelativeEle("east", locOrPixel, index);
     }
-    /**
-     * 获取元素下方的指定元素
-     */
     async south(locOrPixel, index = 1) {
         return this._getRelativeEle("south", locOrPixel, index);
     }
-    /**
-     * 获取元素左边的指定元素
-     */
     async west(locOrPixel, index = 1) {
         return this._getRelativeEle("west", locOrPixel, index);
     }
-    /**
-     * 获取元素上方的指定元素
-     */
     async north(locOrPixel, index = 1) {
         return this._getRelativeEle("north", locOrPixel, index);
     }
@@ -1527,105 +1967,158 @@ class Element {
     async offset(locator, x, y, timeout) {
         const rect = await this.rect.viewport_location();
         const size = await this.rect.size();
-        // 如果没有指定偏移量，定位到元素中间点
         const targetX = x !== undefined ? rect.x + x : rect.x + size.width / 2;
         const targetY = y !== undefined ? rect.y + y : rect.y + size.height / 2;
         const { result } = await this._session.send("Runtime.evaluate", {
             expression: `document.elementFromPoint(${targetX}, ${targetY})`,
             returnByValue: false,
         });
-        if (!result.objectId)
-            return null;
+        if (!result.objectId) {
+            if (NoneElement_1.NoneElement.raiseWhenNotFound) {
+                const { ElementNotFoundError } = await Promise.resolve().then(() => __importStar(require("../errors")));
+                throw new ElementNotFoundError("offset");
+            }
+            return new NoneElement_1.NoneElement("offset", { locator, x: targetX, y: targetY });
+        }
         await this._ensureDomTree();
         const { nodeId } = await this._session.send("DOM.requestNode", {
             objectId: result.objectId,
         });
         const ele = this._createElement(nodeId);
-        // 如果有定位符，在找到的元素中继续查找
         if (locator) {
             return ele.ele(locator);
         }
         return ele;
     }
     async _getRelativeEle(direction, locOrPixel, index = 1) {
-        // 使用视口坐标，因为 elementFromPoint 需要视口坐标
-        const myViewportLoc = await this.rect.viewport_midpoint();
-        const myCenterX = myViewportLoc.x;
-        const myCenterY = myViewportLoc.y;
-        // 如果是像素距离
+        const myViewportLoc = await this.rect.viewport_location();
+        const mySize = await this.rect.size();
+        const myLeft = myViewportLoc.x;
+        const myTop = myViewportLoc.y;
+        const myRight = myLeft + mySize.width;
+        const myBottom = myTop + mySize.height;
         if (typeof locOrPixel === "number") {
-            let targetX = myCenterX;
-            let targetY = myCenterY;
+            let targetX, targetY;
             switch (direction) {
                 case "east":
-                    targetX += locOrPixel;
+                    targetX = myRight + locOrPixel;
+                    targetY = myTop + mySize.height / 2;
                     break;
                 case "west":
-                    targetX -= locOrPixel;
+                    targetX = myLeft - locOrPixel;
+                    targetY = myTop + mySize.height / 2;
                     break;
                 case "south":
-                    targetY += locOrPixel;
+                    targetX = myLeft + mySize.width / 2;
+                    targetY = myBottom + locOrPixel;
                     break;
                 case "north":
-                    targetY -= locOrPixel;
+                    targetX = myLeft + mySize.width / 2;
+                    targetY = myTop - locOrPixel;
                     break;
             }
-            const { result } = await this._session.send("Runtime.evaluate", {
-                expression: `document.elementFromPoint(${targetX}, ${targetY})`,
+            try {
+                const { nodeId } = await this._session.send("DOM.getNodeForLocation", {
+                    x: Math.round(targetX),
+                    y: Math.round(targetY),
+                });
+                if (nodeId > 0)
+                    return this._createElement(nodeId);
+            }
+            catch { }
+            if (NoneElement_1.NoneElement.raiseWhenNotFound) {
+                const { ElementNotFoundError } = await Promise.resolve().then(() => __importStar(require("../errors")));
+                throw new ElementNotFoundError(direction);
+            }
+            return new NoneElement_1.NoneElement(direction, { locOrPixel, index });
+        }
+        const locator = locOrPixel || "*";
+        const { parseLocator } = await Promise.resolve().then(() => __importStar(require("./locator")));
+        const parsed = parseLocator(locator);
+        const step = 1;
+        let found = [];
+        const seenBackendIds = new Set();
+        if (this._backendNodeId > 0)
+            seenBackendIds.add(this._backendNodeId);
+        switch (direction) {
+            case "east": {
+                for (let x = Math.round(myRight); x < myRight + 2000 && found.length < index; x += step) {
+                    for (const y of _scanLine(myTop, myBottom)) {
+                        const ele = await this._getNodeAtLocation(x, y, seenBackendIds);
+                        if (ele) {
+                            found.push(ele);
+                            seenBackendIds.add(ele.backendNodeId);
+                        }
+                    }
+                }
+                break;
+            }
+            case "west": {
+                for (let x = Math.round(myLeft - 1); x > myLeft - 2000 && found.length < index; x -= step) {
+                    for (const y of _scanLine(myTop, myBottom)) {
+                        const ele = await this._getNodeAtLocation(x, y, seenBackendIds);
+                        if (ele) {
+                            found.push(ele);
+                            seenBackendIds.add(ele.backendNodeId);
+                        }
+                    }
+                }
+                break;
+            }
+            case "south": {
+                for (let y = Math.round(myBottom); y < myBottom + 2000 && found.length < index; y += step) {
+                    for (const x of _scanLine(myLeft, myRight)) {
+                        const ele = await this._getNodeAtLocation(x, y, seenBackendIds);
+                        if (ele) {
+                            found.push(ele);
+                            seenBackendIds.add(ele.backendNodeId);
+                        }
+                    }
+                }
+                break;
+            }
+            case "north": {
+                for (let y = Math.round(myTop - 1); y > myTop - 2000 && found.length < index; y -= step) {
+                    for (const x of _scanLine(myLeft, myRight)) {
+                        const ele = await this._getNodeAtLocation(x, y, seenBackendIds);
+                        if (ele) {
+                            found.push(ele);
+                            seenBackendIds.add(ele.backendNodeId);
+                        }
+                    }
+                }
+                break;
+            }
+        }
+        if (parsed.type !== "css" || parsed.value !== "*") {
+            found = await _filterByLocator(found, locator);
+        }
+        const result = found[index - 1] ?? null;
+        if (!result) {
+            if (NoneElement_1.NoneElement.raiseWhenNotFound) {
+                const { ElementNotFoundError } = await Promise.resolve().then(() => __importStar(require("../errors")));
+                throw new ElementNotFoundError(direction);
+            }
+            return new NoneElement_1.NoneElement(direction, { locator, index });
+        }
+        return result;
+    }
+    async _getNodeAtLocation(x, y, seen) {
+        try {
+            const { nodeId } = await this._session.send("DOM.getNodeForLocation", {
+                x,
+                y,
             });
-            if (!result.objectId)
+            if (nodeId <= 0)
                 return null;
-            await this._ensureDomTree();
-            const { nodeId } = await this._session.send("DOM.requestNode", {
-                objectId: result.objectId,
-            });
+            const { node } = await this._session.send("DOM.describeNode", { nodeId });
+            if (seen.has(node.backendNodeId))
+                return null;
             return this._createElement(nodeId);
         }
-        // 如果是定位符，查找所有匹配元素并按方向筛选
-        const selector = locOrPixel || "*";
-        const docNodeId = await this._getDocumentNodeId();
-        const { nodeIds } = await this._session.send("DOM.querySelectorAll", {
-            nodeId: docNodeId,
-            selector,
-        });
-        const candidates = [];
-        for (const nodeId of nodeIds) {
-            const ele = this._createElement(nodeId);
-            try {
-                const midpoint = await ele.rect.viewport_midpoint();
-                const centerX = midpoint.x;
-                const centerY = midpoint.y;
-                let isInDirection = false;
-                let distance = 0;
-                switch (direction) {
-                    case "east":
-                        isInDirection = centerX > myCenterX;
-                        distance = centerX - myCenterX;
-                        break;
-                    case "west":
-                        isInDirection = centerX < myCenterX;
-                        distance = myCenterX - centerX;
-                        break;
-                    case "south":
-                        isInDirection = centerY > myCenterY;
-                        distance = centerY - myCenterY;
-                        break;
-                    case "north":
-                        isInDirection = centerY < myCenterY;
-                        distance = myCenterY - centerY;
-                        break;
-                }
-                if (isInDirection && distance > 0) {
-                    candidates.push({ ele, distance });
-                }
-            }
-            catch {
-                // 忽略无法获取位置的元素
-            }
+        catch {
+            return null;
         }
-        // 按距离排序
-        candidates.sort((a, b) => a.distance - b.distance);
-        return candidates[index - 1]?.ele ?? null;
     }
 }
 exports.Element = Element;
@@ -1634,7 +2127,6 @@ exports.Element = Element;
  * 主要处理 DrissionPage 生成的文本搜索和属性搜索 XPath
  */
 function _cheerioXPathFallback($, xpath) {
-    // 文本包含: //*/text()[contains(., "xxx")]/..
     let m = xpath.match(/\/\/\*\/text\(\)\[contains\(\.,\s*"([^"]+)"\)\]\/\.\./);
     if (m) {
         return $("*").toArray().filter((node) => {
@@ -1642,7 +2134,6 @@ function _cheerioXPathFallback($, xpath) {
             return text && text.includes(m[1]);
         });
     }
-    // 精确文本: //*[text()="xxx"]
     m = xpath.match(/\/\/\*\[text\(\)="([^"]+)"\]/);
     if (m) {
         return $("*").toArray().filter((node) => {
@@ -1650,25 +2141,147 @@ function _cheerioXPathFallback($, xpath) {
             return text === m[1];
         });
     }
-    // 属性精确: //*[@attr="val"]
     m = xpath.match(/\/\/\*\[@(\w+)="([^"]+)"\]/);
     if (m) {
         return $(`[${m[1]}="${m[2]}"]`).toArray();
     }
-    // 属性包含: //*[contains(@attr,"val")]
     m = xpath.match(/\/\/\*\[contains\(@(\w+),"([^"]+)"\)\]/);
     if (m) {
         return $(`[${m[1]}*="${m[2]}"]`).toArray();
     }
-    // tag name: //*[name()="div"]
     m = xpath.match(/\/\/\*\[name\(\)="(\w+)"\]/);
     if (m) {
         return $(m[1]).toArray();
     }
-    // 通配符
     if (xpath === "//*") {
         return $("*").toArray();
     }
-    // 无法解析的 XPath，返回空
     return [];
+}
+function _scanLine(start, end) {
+    const points = [];
+    const mid = (start + end) / 2;
+    points.push(Math.round(mid));
+    const step = Math.max(1, Math.floor((end - start) / 5));
+    for (let p = Math.round(start); p < Math.round(end); p += step) {
+        points.push(p);
+    }
+    return points;
+}
+async function _filterByLocator(elements, locator) {
+    const { parseLocator } = await Promise.resolve().then(() => __importStar(require("./locator")));
+    const parsed = parseLocator(locator);
+    const result = [];
+    for (const ele of elements) {
+        try {
+            if (parsed.type === "css") {
+                const matches = await ele.run_js(`return this.matches(${JSON.stringify(parsed.value)})`);
+                if (matches)
+                    result.push(ele);
+            }
+            else if (parsed.type === "xpath") {
+                const tag = await ele.tag_name();
+                if (tag)
+                    result.push(ele);
+            }
+            else {
+                result.push(ele);
+            }
+        }
+        catch { }
+    }
+    return result;
+}
+const KEY_MAP = {
+    "Enter": { key: "Enter", code: "Enter", keyCode: 13 },
+    "Tab": { key: "Tab", code: "Tab", keyCode: 9 },
+    "Escape": { key: "Escape", code: "Escape", keyCode: 27 },
+    "Backspace": { key: "Backspace", code: "Backspace", keyCode: 8 },
+    "Delete": { key: "Delete", code: "Delete", keyCode: 46 },
+    "ArrowUp": { key: "ArrowUp", code: "ArrowUp", keyCode: 38 },
+    "ArrowDown": { key: "ArrowDown", code: "ArrowDown", keyCode: 40 },
+    "ArrowLeft": { key: "ArrowLeft", code: "ArrowLeft", keyCode: 37 },
+    "ArrowRight": { key: "ArrowRight", code: "ArrowRight", keyCode: 39 },
+    "Home": { key: "Home", code: "Home", keyCode: 36 },
+    "End": { key: "End", code: "End", keyCode: 35 },
+    "PageUp": { key: "PageUp", code: "PageUp", keyCode: 33 },
+    "PageDown": { key: "PageDown", code: "PageDown", keyCode: 34 },
+    "Space": { key: " ", code: "Space", keyCode: 32 },
+    "Control": { key: "Control", code: "ControlLeft", keyCode: 17 },
+    "Alt": { key: "Alt", code: "AltLeft", keyCode: 18 },
+    "Shift": { key: "Shift", code: "ShiftLeft", keyCode: 16 },
+    "Meta": { key: "Meta", code: "MetaLeft", keyCode: 91 },
+    "F1": { key: "F1", code: "F1", keyCode: 112 },
+    "F2": { key: "F2", code: "F2", keyCode: 113 },
+    "F3": { key: "F3", code: "F3", keyCode: 114 },
+    "F4": { key: "F4", code: "F4", keyCode: 115 },
+    "F5": { key: "F5", code: "F5", keyCode: 116 },
+    "F6": { key: "F6", code: "F6", keyCode: 117 },
+    "F7": { key: "F7", code: "F7", keyCode: 118 },
+    "F8": { key: "F8", code: "F8", keyCode: 119 },
+    "F9": { key: "F9", code: "F9", keyCode: 120 },
+    "F10": { key: "F10", code: "F10", keyCode: 121 },
+    "F11": { key: "F11", code: "F11", keyCode: 122 },
+    "F12": { key: "F12", code: "F12", keyCode: 123 },
+};
+function _getKeyDefinition(key) {
+    if (KEY_MAP[key])
+        return KEY_MAP[key];
+    if (key.length === 1) {
+        const upper = key.toUpperCase();
+        return { key, code: `Key${upper}`, keyCode: upper.charCodeAt(0) };
+    }
+    return { key, code: key, keyCode: 0 };
+}
+function _charToKeyCode(char) {
+    const code = char.charCodeAt(0);
+    if (code >= 65 && code <= 90)
+        return code;
+    if (code >= 97 && code <= 122)
+        return code - 32;
+    if (code >= 48 && code <= 57)
+        return code;
+    switch (char) {
+        case ' ': return 32;
+        case '\n': return 13;
+        case '\t': return 9;
+        case '.': return 190;
+        case ',': return 188;
+        case '/': return 191;
+        case '\\': return 220;
+        case '[': return 219;
+        case ']': return 221;
+        case '-': return 189;
+        case '=': return 187;
+        case ';': return 186;
+        case "'": return 222;
+        case '`': return 192;
+        default: return code;
+    }
+}
+function _charToCode(char) {
+    const code = char.charCodeAt(0);
+    if (code >= 65 && code <= 90)
+        return `Key${char}`;
+    if (code >= 97 && code <= 122)
+        return `Key${char.toUpperCase()}`;
+    if (code >= 48 && code <= 57)
+        return `Digit${char}`;
+    switch (char) {
+        case ' ': return 'Space';
+        case '\n': return 'Enter';
+        case '\t': return 'Tab';
+        case '.': return 'Period';
+        case ',': return 'Comma';
+        case '/': return 'Slash';
+        case '\\': return 'Backslash';
+        case '[': return 'BracketLeft';
+        case ']': return 'BracketRight';
+        case '-': return 'Minus';
+        case '=': return 'Equal';
+        case ';': return 'Semicolon';
+        case "'": return 'Quote';
+        case '`': return 'Backquote';
+        default: return `Key${char}`;
+    }
 }

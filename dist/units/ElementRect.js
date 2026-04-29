@@ -1,93 +1,87 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ElementRect = void 0;
-/**
- * 元素位置和大小信息，对应 DrissionPage 的 ElementRect
- */
 class ElementRect {
     constructor(ele) {
         this._ele = ele;
     }
-    /**
-     * 元素左上角在页面中的坐标
-     */
     async location() {
-        const objectId = await this._ele.getObjectId();
-        const { result } = await this._ele.session.send("Runtime.callFunctionOn", {
-            objectId,
-            functionDeclaration: `function() {
-        const rect = this.getBoundingClientRect();
-        return { x: rect.left + window.scrollX, y: rect.top + window.scrollY };
-      }`,
-            returnByValue: true,
-        });
-        return result.value;
+        const vp = await this.viewport_location();
+        try {
+            const metrics = await this._ele.session.send("Page.getLayoutMetrics");
+            return {
+                x: vp.x + metrics.visualViewport.pageX,
+                y: vp.y + metrics.visualViewport.pageY,
+            };
+        }
+        catch {
+            return vp;
+        }
     }
-    /**
-     * 元素在视口中的坐标
-     */
     async viewport_location() {
-        const objectId = await this._ele.getObjectId();
-        const { result } = await this._ele.session.send("Runtime.callFunctionOn", {
-            objectId,
-            functionDeclaration: `function() {
-        const rect = this.getBoundingClientRect();
-        return { x: rect.left, y: rect.top };
-      }`,
-            returnByValue: true,
-        });
-        return result.value;
+        try {
+            const { model } = await this._ele.session.send("DOM.getBoxModel", {
+                backendNodeId: this._ele.backendNodeId,
+            });
+            const border = model.border;
+            return { x: border[0], y: border[1] };
+        }
+        catch {
+            const objectId = await this._ele.getObjectId();
+            const { result } = await this._ele.session.send("Runtime.callFunctionOn", {
+                objectId,
+                functionDeclaration: `function() { const r = this.getBoundingClientRect(); return { x: r.left, y: r.top }; }`,
+                returnByValue: true,
+            });
+            return result.value;
+        }
     }
-    /**
-     * 元素在屏幕上的坐标
-     */
     async screen_location() {
-        const objectId = await this._ele.getObjectId();
-        const { result } = await this._ele.session.send("Runtime.callFunctionOn", {
-            objectId,
-            functionDeclaration: `function() {
-        const rect = this.getBoundingClientRect();
-        return { x: rect.left + window.screenX, y: rect.top + window.screenY };
-      }`,
-            returnByValue: true,
-        });
-        return result.value;
+        const vp = await this.viewport_location();
+        try {
+            const { result } = await this._ele.session.send("Runtime.evaluate", {
+                expression: "({ x: window.screenX + (window.outerWidth - window.innerWidth), y: window.screenY + (window.outerHeight - window.innerHeight), dpr: window.devicePixelRatio || 1 })",
+                returnByValue: true,
+            });
+            return {
+                x: vp.x * result.value.dpr + result.value.x,
+                y: vp.y * result.value.dpr + result.value.y,
+            };
+        }
+        catch {
+            return vp;
+        }
     }
-    /**
-     * 元素大小
-     */
     async size() {
-        const objectId = await this._ele.getObjectId();
-        const { result } = await this._ele.session.send("Runtime.callFunctionOn", {
-            objectId,
-            functionDeclaration: `function() {
-        const rect = this.getBoundingClientRect();
-        return { width: rect.width, height: rect.height };
-      }`,
-            returnByValue: true,
-        });
-        return result.value;
+        try {
+            const { model } = await this._ele.session.send("DOM.getBoxModel", {
+                backendNodeId: this._ele.backendNodeId,
+            });
+            const b = model.border;
+            const width = Math.sqrt((b[2] - b[0]) ** 2 + (b[3] - b[1]) ** 2);
+            const height = Math.sqrt((b[6] - b[0]) ** 2 + (b[7] - b[1]) ** 2);
+            return { width, height };
+        }
+        catch {
+            const objectId = await this._ele.getObjectId();
+            const { result } = await this._ele.session.send("Runtime.callFunctionOn", {
+                objectId,
+                functionDeclaration: `function() { const r = this.getBoundingClientRect(); return { width: r.width, height: r.height }; }`,
+                returnByValue: true,
+            });
+            return result.value;
+        }
     }
-    /**
-     * 元素中心点在页面中的坐标
-     */
     async midpoint() {
         const loc = await this.location();
         const sz = await this.size();
         return { x: loc.x + sz.width / 2, y: loc.y + sz.height / 2 };
     }
-    /**
-     * 元素中心点在视口中的坐标
-     */
     async viewport_midpoint() {
         const loc = await this.viewport_location();
         const sz = await this.size();
         return { x: loc.x + sz.width / 2, y: loc.y + sz.height / 2 };
     }
-    /**
-     * 点击点坐标（页面坐标）
-     * 对齐 DrissionPage: x 取中点，y 取 padding 顶部 + 3
-     */
     async click_point() {
         const vp = await this.viewport_click_point();
         try {
@@ -101,68 +95,68 @@ class ElementRect {
             return this.midpoint();
         }
     }
-    /**
-     * 元素四个角的坐标
-     */
     async corners() {
-        const loc = await this.location();
-        const sz = await this.size();
-        return [
-            { x: loc.x, y: loc.y },
-            { x: loc.x + sz.width, y: loc.y },
-            { x: loc.x + sz.width, y: loc.y + sz.height },
-            { x: loc.x, y: loc.y + sz.height },
-        ];
+        try {
+            const { model } = await this._ele.session.send("DOM.getBoxModel", {
+                backendNodeId: this._ele.backendNodeId,
+            });
+            const b = model.border;
+            return [
+                { x: b[0], y: b[1] },
+                { x: b[2], y: b[3] },
+                { x: b[4], y: b[5] },
+                { x: b[6], y: b[7] },
+            ];
+        }
+        catch {
+            const loc = await this.location();
+            const sz = await this.size();
+            return [
+                { x: loc.x, y: loc.y },
+                { x: loc.x + sz.width, y: loc.y },
+                { x: loc.x + sz.width, y: loc.y + sz.height },
+                { x: loc.x, y: loc.y + sz.height },
+            ];
+        }
     }
-    /**
-     * 元素四个角在视口中的坐标
-     */
     async viewport_corners() {
-        const loc = await this.viewport_location();
-        const sz = await this.size();
-        return [
-            { x: loc.x, y: loc.y },
-            { x: loc.x + sz.width, y: loc.y },
-            { x: loc.x + sz.width, y: loc.y + sz.height },
-            { x: loc.x, y: loc.y + sz.height },
-        ];
+        try {
+            const { model } = await this._ele.session.send("DOM.getBoxModel", {
+                backendNodeId: this._ele.backendNodeId,
+            });
+            const b = model.border;
+            return [
+                { x: b[0], y: b[1] },
+                { x: b[2], y: b[3] },
+                { x: b[4], y: b[5] },
+                { x: b[6], y: b[7] },
+            ];
+        }
+        catch {
+            const loc = await this.viewport_location();
+            const sz = await this.size();
+            return [
+                { x: loc.x, y: loc.y },
+                { x: loc.x + sz.width, y: loc.y },
+                { x: loc.x + sz.width, y: loc.y + sz.height },
+                { x: loc.x, y: loc.y + sz.height },
+            ];
+        }
     }
-    /**
-     * 元素中心点在屏幕上的坐标
-     */
     async screen_midpoint() {
-        const objectId = await this._ele.getObjectId();
-        const { result } = await this._ele.session.send("Runtime.callFunctionOn", {
-            objectId,
-            functionDeclaration: `function() {
-        const rect = this.getBoundingClientRect();
-        return { 
-          x: rect.left + rect.width / 2 + window.screenX, 
-          y: rect.top + rect.height / 2 + window.screenY 
-        };
-      }`,
-            returnByValue: true,
-        });
-        return result.value;
+        const loc = await this.screen_location();
+        const sz = await this.size();
+        return { x: loc.x + sz.width / 2, y: loc.y + sz.height / 2 };
     }
-    /**
-     * 元素点击点在屏幕上的坐标
-     */
     async screen_click_point() {
         return this.screen_midpoint();
     }
-    /**
-     * 视口中的点击点坐标
-     * 对齐 DrissionPage: x 取 border 中点，y 取 padding 顶部 + 3
-     */
     async viewport_click_point() {
         try {
             const mid = await this.viewport_midpoint();
-            // 尝试用 DOM.getBoxModel 获取 padding 区域
             const backendId = this._ele.backendNodeId;
             if (backendId > 0) {
                 const { model } = await this._ele.session.send("DOM.getBoxModel", { backendNodeId: backendId });
-                // padding quad: [x1,y1, x2,y2, x3,y3, x4,y4]
                 const paddingTop = model.padding[1];
                 return { x: mid.x, y: paddingTop + 3 };
             }
@@ -172,16 +166,11 @@ class ElementRect {
             return this.viewport_midpoint();
         }
     }
-    /**
-     * 元素滚动条位置
-     */
     async scroll_position() {
         const objectId = await this._ele.getObjectId();
         const { result } = await this._ele.session.send("Runtime.callFunctionOn", {
             objectId,
-            functionDeclaration: `function() {
-        return { x: this.scrollLeft || 0, y: this.scrollTop || 0 };
-      }`,
+            functionDeclaration: `function() { return { x: this.scrollLeft || 0, y: this.scrollTop || 0 }; }`,
             returnByValue: true,
         });
         return result.value;

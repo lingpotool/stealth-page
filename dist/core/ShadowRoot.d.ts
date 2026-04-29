@@ -1,10 +1,7 @@
 import { CDPSession } from "./CDPSession";
 import { Element } from "./Element";
+import { NoneElement } from "./NoneElement";
 import { ShadowRootStates } from "../units/ShadowRootStates";
-/**
- * ShadowRoot 类，对应 DrissionPage 的 ShadowRoot
- * 用于操作 Shadow DOM 内的元素
- */
 export declare class ShadowRoot {
     private readonly _session;
     private readonly _parentEle;
@@ -20,59 +17,34 @@ export declare class ShadowRoot {
     get session(): CDPSession;
     get parent_ele(): Element;
     get tag(): string;
-    /**
-     * 状态检查对象
-     */
     get states(): ShadowRootStates;
     get backendNodeId(): number;
-    /**
-     * 获取 shadow root 的 innerHTML
-     */
+    equals(other: any): boolean;
     inner_html(): Promise<string>;
-    /**
-     * 获取 shadow root 的 HTML
-     */
     html(): Promise<string>;
-    /**
-     * 在 shadow root 内执行 JS
-     */
     run_js(script: string, ...args: any[]): Promise<any>;
-    /**
-     * 异步执行 JS
-     */
+    _run_js(script: string, ...args: any[]): Promise<any>;
     run_async_js(script: string, ...args: any[]): Promise<void>;
-    /**
-     * 在 shadow root 内查找单个元素
-     */
-    ele(locator: string, index?: number): Promise<Element | null>;
-    /**
-     * 在 shadow root 内查找所有元素
-     */
-    eles(locator: string): Promise<Element[]>;
-    /**
-     * 获取父元素
-     */
-    parent(levelOrLoc?: number | string): Promise<Element | null>;
-    /**
-     * 获取子元素
-     */
-    child(locatorOrIndex?: string | number, index?: number): Promise<Element | null>;
-    /**
-     * 获取所有子元素
-     */
-    children(locator?: string): Promise<Element[]>;
-    /**
-     * 获取下一个兄弟元素（相对于 parent_ele）
-     */
-    next(locator?: string, index?: number): Promise<Element | null>;
-    /**
-     * 获取前面的兄弟元素
-     */
-    before(locator?: string, index?: number): Promise<Element | null>;
-    /**
-     * 获取后面的兄弟元素
-     */
-    after(locator?: string, index?: number): Promise<Element | null>;
+    ele(locator: string, index?: number, timeout?: number): Promise<Element | NoneElement>;
+    eles(locator: string, timeout?: number): Promise<Element[]>;
+    private _elesOnce;
+    s_ele(locator: string, index?: number): Promise<any>;
+    s_eles(locator: string): Promise<any[]>;
+    parent(levelOrLoc?: number | string): Promise<Element | NoneElement>;
+    child(locatorOrIndex?: string | number, index?: number, eleOnly?: boolean): Promise<Element | NoneElement>;
+    children(locator?: string, eleOnly?: boolean): Promise<Element[]>;
+    next(locator?: string, index?: number, eleOnly?: boolean): Promise<Element | NoneElement>;
+    prev(locator?: string, index?: number, eleOnly?: boolean): Promise<Element | NoneElement>;
+    nexts(locator?: string, eleOnly?: boolean): Promise<Element[]>;
+    prevs(locator?: string, eleOnly?: boolean): Promise<Element[]>;
+    before(locator?: string, index?: number, eleOnly?: boolean): Promise<Element | NoneElement>;
+    after(locator?: string, index?: number, eleOnly?: boolean): Promise<Element | NoneElement>;
+    befores(locator?: string, eleOnly?: boolean): Promise<Element[]>;
+    afters(locator?: string, eleOnly?: boolean): Promise<Element[]>;
+    _find_elements(locator: string, timeout: number, index?: number, relative?: boolean, raiseErr?: boolean): Promise<Element | NoneElement | Element[]>;
+    _get_node_id(objId?: string): Promise<number>;
+    _get_obj_id(backendId?: number): Promise<string>;
+    _get_backend_id(nodeId?: number): Promise<number>;
     toString(): string;
     private _getObjectId;
     private _getNodeId;

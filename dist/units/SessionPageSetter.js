@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SessionPageSetter = void 0;
+const SessionCookiesSetter_1 = require("./SessionCookiesSetter");
 /**
  * SessionPage 设置类
  * 对应 DrissionPage.SessionPageSetter
@@ -9,9 +10,9 @@ class SessionPageSetter {
     constructor(owner) {
         this._owner = owner;
     }
-    /**
-     * 设置下载路径
-     */
+    get cookies() {
+        return new SessionCookiesSetter_1.SessionCookiesSetter(this._owner);
+    }
     download_path(path) {
         if (path !== null) {
             this._owner.options.downloadPath = path;
@@ -107,6 +108,40 @@ class SessionPageSetter {
      */
     max_redirects(times) {
         this._owner.options.maxRedirects = times;
+    }
+    auth(auth) {
+        if (Array.isArray(auth)) {
+            this._owner.options.auth = { username: auth[0], password: auth[1] };
+        }
+        else if (typeof auth === 'string') {
+            const decoded = Buffer.from(auth, 'base64').toString('utf-8');
+            const [username, password] = decoded.split(':');
+            this._owner.options.auth = { username, password };
+        }
+        else {
+            this._owner.options.auth = auth;
+        }
+    }
+    hooks(hooks) {
+        this._owner.options.hooks = { ...(this._owner.options.hooks || {}), ...hooks };
+    }
+    params(params) {
+        this._owner.options.params = { ...(this._owner.options.params || {}), ...params };
+    }
+    cert(cert) {
+        this._owner.options.cert = cert;
+    }
+    stream(onOff) {
+        this._owner.options.stream = onOff;
+    }
+    trust_env(onOff) {
+        this._owner.options.trustEnv = onOff;
+    }
+    add_adapter(url, adapter) {
+        if (!this._owner.options.adapters) {
+            this._owner.options.adapters = {};
+        }
+        this._owner.options.adapters[url] = adapter;
     }
 }
 exports.SessionPageSetter = SessionPageSetter;

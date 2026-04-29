@@ -56,4 +56,7 @@ export declare class BrowserSetter {
      * 设置空元素返回值
      */
     NoneElement_value(value?: any, onOff?: boolean): void;
+    download_file_type(fileType: string): void;
+    block_urls(urls: string[] | null): Promise<void>;
+    ignore_https_errors(onOff?: boolean): Promise<void>;
 }

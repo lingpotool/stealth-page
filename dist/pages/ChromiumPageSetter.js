@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ScrollSettings = exports.ChromiumPageSetter = exports.PageLoadMode = void 0;
 const CookiesSetter_1 = require("../units/CookiesSetter");
 const WindowSetter_1 = require("../units/WindowSetter");
+const NoneElement_1 = require("../core/NoneElement");
 /**
  * 加载模式设置类（页面级别）
  */
@@ -268,6 +269,14 @@ class ChromiumPageSetter {
      */
     when_download_file_exists(mode) {
         this._page.browser.options.whenDownloadFileExists = mode;
+        return this;
+    }
+    none_element_value(value = null, returnSelf = true) {
+        NoneElement_1.NoneElement.setValue(value, returnSelf);
+        return this;
+    }
+    none_element_raise(raise = true) {
+        NoneElement_1.NoneElement.raiseWhenNotFound = raise;
         return this;
     }
 }

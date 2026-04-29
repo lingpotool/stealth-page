@@ -3,18 +3,19 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.WebSocketCDPSession = void 0;
+exports.BrowserDriver = exports.WebSocketCDPSession = void 0;
 const ws_1 = __importDefault(require("ws"));
-/**
- * 子会话，用于 flatten 模式下与特定 target 通信
- */
+const DEFAULT_CDP_TIMEOUT = 10;
 class ChildCDPSession {
     constructor(parent, sessionId) {
         this.parent = parent;
         this.sessionId = sessionId;
     }
-    async send(method, params) {
-        return this.parent.sendToSession(this.sessionId, method, params);
+    async send(method, params, timeout) {
+        return this.parent.sendToSession(this.sessionId, method, params, timeout);
+    }
+    async run(method, params, _ignore) {
+        return this.parent.runInSession(this.sessionId, method, params, _ignore);
     }
     on(event, handler) {
         this.parent.onSession(this.sessionId, event, handler);
@@ -30,22 +31,20 @@ class ChildCDPSession {
         this.parent.offSession(this.sessionId, event, handler);
     }
     close() {
-        // 子会话不直接关闭 WebSocket
     }
     createChildSession(sessionId) {
         return new ChildCDPSession(this.parent, sessionId);
     }
 }
-/**
- * 通过 WebSocket 实现的 CDP 会话，用于连接 Chrome DevTools 协议。
- */
 class WebSocketCDPSession {
     constructor(ws) {
         this.nextId = 0;
         this.pending = new Map();
         this.eventHandlers = new Map();
-        // 用于 flatten 模式的子会话事件处理
         this.sessionEventHandlers = new Map();
+        this.immediateEventHandlers = new Map();
+        this.immediateEventQueue = [];
+        this.alert_flag = false;
         this.handleMessage = (data) => {
             let msg;
             try {
@@ -61,7 +60,12 @@ class WebSocketCDPSession {
                 }
                 this.pending.delete(msg.id);
                 if (msg.error) {
-                    pending.reject(new Error(msg.error.message || "CDP error"));
+                    const errorInfo = {
+                        error: msg.error.message || "CDP error",
+                        type: "cdp_error",
+                        data: msg.error,
+                    };
+                    pending.reject(errorInfo);
                 }
                 else {
                     pending.resolve(msg.result);
@@ -69,7 +73,15 @@ class WebSocketCDPSession {
                 return;
             }
             if (msg.method) {
-                // 处理带 sessionId 的事件（flatten 模式）
+                const immediateHandler = this.immediateEventHandlers.get(msg.method);
+                if (immediateHandler) {
+                    try {
+                        immediateHandler(msg.params);
+                    }
+                    catch {
+                    }
+                    this.immediateEventQueue.push({ method: msg.method, params: msg.params });
+                }
                 if (msg.sessionId) {
                     const sessionMap = this.sessionEventHandlers.get(msg.sessionId);
                     if (sessionMap) {
@@ -85,7 +97,6 @@ class WebSocketCDPSession {
                         }
                     }
                 }
-                // 也触发全局事件处理器
                 const handlers = this.eventHandlers.get(msg.method);
                 if (handlers) {
                     for (const handler of handlers) {
@@ -105,6 +116,13 @@ class WebSocketCDPSession {
             }
         };
         this.handleClose = () => {
+            if (this.owner && typeof this.owner._on_disconnect === 'function') {
+                try {
+                    this.owner._on_disconnect();
+                }
+                catch {
+                }
+            }
             const err = new Error("CDP WebSocket closed");
             for (const [id, pending] of this.pending) {
                 pending.reject(err);
@@ -115,6 +133,15 @@ class WebSocketCDPSession {
         this.ws.on("message", this.handleMessage);
         this.ws.on("error", this.handleError);
         this.ws.on("close", this.handleClose);
+        this._initAlertListeners();
+    }
+    _initAlertListeners() {
+        this.on("Page.javascriptDialogOpening", () => {
+            this.alert_flag = true;
+        });
+        this.on("Page.javascriptDialogClosed", () => {
+            this.alert_flag = false;
+        });
     }
     static async connect(url) {
         return new Promise((resolve, reject) => {
@@ -130,10 +157,23 @@ class WebSocketCDPSession {
             ws.once("error", onError);
         });
     }
-    async send(method, params) {
+    set_callback(event, callback, immediate = false) {
+        if (immediate) {
+            this.immediateEventHandlers.set(event, callback);
+        }
+        else {
+            this.on(event, callback);
+        }
+    }
+    async send(method, params, timeout) {
+        if (this.alert_flag && (method.startsWith("Input.") || method.startsWith("Runtime."))) {
+            const errorInfo = { error: "alert exists.", type: "alert_exists", method, args: params };
+            throw errorInfo;
+        }
         const id = ++this.nextId;
         const message = JSON.stringify({ id, method, params });
-        return new Promise((resolve, reject) => {
+        const timeoutMs = (timeout !== undefined ? timeout : DEFAULT_CDP_TIMEOUT) * 1000;
+        const sendPromise = new Promise((resolve, reject) => {
             this.pending.set(id, { resolve, reject });
             this.ws.send(message, (err) => {
                 if (err) {
@@ -142,14 +182,26 @@ class WebSocketCDPSession {
                 }
             });
         });
+        const timeoutPromise = new Promise((_resolve, reject) => {
+            setTimeout(() => {
+                if (this.pending.has(id)) {
+                    this.pending.delete(id);
+                    const errorInfo = { error: "timeout", type: "timeout", method, args: params };
+                    reject(errorInfo);
+                }
+            }, timeoutMs);
+        });
+        return Promise.race([sendPromise, timeoutPromise]);
     }
-    /**
-     * 向特定 session 发送命令（flatten 模式）
-     */
-    async sendToSession(sessionId, method, params) {
+    async sendToSession(sessionId, method, params, timeout) {
+        if (this.alert_flag && (method.startsWith("Input.") || method.startsWith("Runtime."))) {
+            const errorInfo = { error: "alert exists.", type: "alert_exists", method, args: params };
+            throw errorInfo;
+        }
         const id = ++this.nextId;
         const message = JSON.stringify({ id, method, params, sessionId });
-        return new Promise((resolve, reject) => {
+        const timeoutMs = (timeout !== undefined ? timeout : DEFAULT_CDP_TIMEOUT) * 1000;
+        const sendPromise = new Promise((resolve, reject) => {
             this.pending.set(id, { resolve, reject });
             this.ws.send(message, (err) => {
                 if (err) {
@@ -158,6 +210,75 @@ class WebSocketCDPSession {
                 }
             });
         });
+        const timeoutPromise = new Promise((_resolve, reject) => {
+            setTimeout(() => {
+                if (this.pending.has(id)) {
+                    this.pending.delete(id);
+                    const errorInfo = { error: "timeout", type: "timeout", method, args: params };
+                    reject(errorInfo);
+                }
+            }, timeoutMs);
+        });
+        return Promise.race([sendPromise, timeoutPromise]);
+    }
+    async run(method, params, _ignore = []) {
+        try {
+            return await this.send(method, params);
+        }
+        catch (e) {
+            if (this._shouldIgnore(e, _ignore)) {
+                return undefined;
+            }
+            throw e;
+        }
+    }
+    async runInSession(sessionId, method, params, _ignore = []) {
+        try {
+            return await this.sendToSession(sessionId, method, params);
+        }
+        catch (e) {
+            if (this._shouldIgnore(e, _ignore)) {
+                return undefined;
+            }
+            throw e;
+        }
+    }
+    _shouldIgnore(error, _ignore) {
+        if (!_ignore || _ignore.length === 0)
+            return false;
+        const errorType = error?.type || '';
+        const errorMsg = error?.error || (error?.message || '');
+        for (const ignoreClass of _ignore) {
+            if (typeof ignoreClass === 'function') {
+                const className = ignoreClass.name;
+                if (error instanceof ignoreClass)
+                    return true;
+                if (errorType === 'alert_exists' && className === 'AlertExistsError')
+                    return true;
+                if (errorType === 'timeout' && className === 'WaitTimeoutError')
+                    return true;
+                if (errorType === 'cdp_error') {
+                    const errorMappings = {
+                        'Cannot find context': 'ContextLostError',
+                        'Could not find node': 'ElementLostError',
+                        'connection disconnected': 'PageDisconnectedError',
+                        'alert exists': 'AlertExistsError',
+                        'Node does not have layout': 'NoRectError',
+                        'Cannot navigate to invalid URL': 'IncorrectURLError',
+                        'Frame corresponds to opaque origin': 'StorageError',
+                        'Sanitizing cookie failed': 'CookieFormatError',
+                        'Given expression does not evaluate to a function': 'JavaScriptError',
+                    };
+                    for (const [pattern, mappedClass] of Object.entries(errorMappings)) {
+                        if (errorMsg.includes(pattern) && className === mappedClass)
+                            return true;
+                    }
+                    if (className === 'CDPError')
+                        return true;
+                }
+            }
+        }
+        return false;
     }
     on(event, handler) {
         let set = this.eventHandlers.get(event);
@@ -184,9 +305,6 @@ class WebSocketCDPSession {
             this.eventHandlers.delete(event);
         }
     }
-    /**
-     * 为特定 session 注册事件处理器
-     */
     onSession(sessionId, event, handler) {
         let sessionMap = this.sessionEventHandlers.get(sessionId);
         if (!sessionMap) {
@@ -200,9 +318,6 @@ class WebSocketCDPSession {
         }
         set.add(handler);
     }
-    /**
-     * 移除特定 session 的事件处理器
-     */
     offSession(sessionId, event, handler) {
         const sessionMap = this.sessionEventHandlers.get(sessionId);
         if (!sessionMap)
@@ -218,9 +333,6 @@ class WebSocketCDPSession {
             this.sessionEventHandlers.delete(sessionId);
         }
     }
-    /**
-     * 创建子会话（用于 flatten 模式）
-     */
     createChildSession(sessionId) {
         return new ChildCDPSession(this, sessionId);
     }
@@ -229,3 +341,52 @@ class WebSocketCDPSession {
     }
 }
 exports.WebSocketCDPSession = WebSocketCDPSession;
+class BrowserDriver {
+    constructor(id, address, session) {
+        this.id = id;
+        this.address = address;
+        this.session = session;
+    }
+    static async get(id, address, owner) {
+        const existing = BrowserDriver.BROWSERS.get(id);
+        if (existing) {
+            if (owner !== undefined) {
+                existing.owner = owner;
+                existing.session.owner = owner;
+            }
+            return existing;
+        }
+        const session = await WebSocketCDPSession.connect(address);
+        const driver = new BrowserDriver(id, address, session);
+        if (owner !== undefined) {
+            driver.owner = owner;
+            session.owner = owner;
+        }
+        BrowserDriver.BROWSERS.set(id, driver);
+        return driver;
+    }
+    static has(id) {
+        return BrowserDriver.BROWSERS.has(id);
+    }
+    static remove(id) {
+        const driver = BrowserDriver.BROWSERS.get(id);
+        if (driver) {
+            driver.session.close();
+            BrowserDriver.BROWSERS.delete(id);
+        }
+    }
+    async send(method, params, timeout) {
+        return this.session.send(method, params, timeout);
+    }
+    async run(method, params, _ignore = []) {
+        return this.session.run(method, params, _ignore);
+    }
+    set_callback(event, callback, immediate = false) {
+        this.session.set_callback(event, callback, immediate);
+    }
+    close() {
+        BrowserDriver.remove(this.id);
+    }
+}
+exports.BrowserDriver = BrowserDriver;
+BrowserDriver.BROWSERS = new Map();

@@ -1,25 +1,18 @@
-/**
- * 空元素类，对应 DrissionPage 的 NoneElement
- * 用于在找不到元素时返回，避免 null 检查
- */
 export declare class NoneElement {
     private readonly _method;
     private readonly _args;
     private static _returnValue;
-    private static _enabled;
+    private static _returnSelf;
+    private static _raiseWhenNotFound;
     constructor(method?: string, args?: Record<string, any>);
-    /**
-     * 设置空元素返回值
-     */
-    static setValue(value?: any, enabled?: boolean): void;
-    /**
-     * 是否启用空元素返回值
-     */
-    static get enabled(): boolean;
-    /**
-     * 获取设置的返回值
-     */
+    static setValue(value?: any, returnSelf?: boolean): void;
+    static get returnSelf(): boolean;
+    static set returnSelf(value: boolean);
     static get returnValue(): any;
+    static set raiseWhenNotFound(value: boolean);
+    static get raiseWhenNotFound(): boolean;
+    private _navResult;
+    private _valueResult;
     get tag(): string;
     get html(): string;
     get inner_html(): string;
@@ -27,42 +20,69 @@ export declare class NoneElement {
     get raw_text(): string;
     get attrs(): Record<string, string>;
     get value(): string;
-    attr(_name: string): Promise<null>;
-    property(_name: string): Promise<null>;
-    style(_name: string, _pseudoEle?: string): Promise<string>;
+    get sr(): NoneElement;
+    get size(): {
+        width: number;
+        height: number;
+    };
+    get link(): any;
+    get css_path(): any;
+    get xpath(): any;
+    get comments(): any[];
+    get texts(): any;
+    attr(_name: string): Promise<any>;
+    style(_name: string, _pseudoEle?: string): Promise<any>;
+    src(_timeout?: number, _base64ToBytes?: boolean): Promise<any>;
+    property(_name: string): Promise<any>;
     is_displayed(): Promise<boolean>;
     is_enabled(): Promise<boolean>;
     is_selected(): Promise<boolean>;
     is_alive(): Promise<boolean>;
     is_in_viewport(): Promise<boolean>;
-    is_covered(): Promise<boolean>;
+    is_covered(): Promise<boolean | number>;
     click(): Promise<NoneElement>;
-    input(_value: string): Promise<NoneElement>;
-    clear(): Promise<NoneElement>;
+    input(_value: string, _clear?: boolean, _byJs?: boolean): Promise<NoneElement>;
+    clear(_byJs?: boolean): Promise<NoneElement>;
     focus(): Promise<NoneElement>;
-    hover(): Promise<NoneElement>;
-    drag(_offsetX: number, _offsetY: number): Promise<NoneElement>;
-    drag_to(_target: any): Promise<NoneElement>;
-    check(_uncheck?: boolean): Promise<NoneElement>;
-    ele(_locator: string): Promise<NoneElement>;
-    eles(_locator: string): Promise<NoneElement[]>;
-    parent(_level?: number | string): Promise<NoneElement>;
-    child(_locator?: string | number): Promise<NoneElement>;
-    children(_locator?: string): Promise<NoneElement[]>;
-    next(_locator?: string): Promise<NoneElement>;
-    prev(_locator?: string): Promise<NoneElement>;
-    nexts(_locator?: string): Promise<NoneElement[]>;
-    prevs(_locator?: string): Promise<NoneElement[]>;
-    before(_locator?: string): Promise<NoneElement>;
-    after(_locator?: string): Promise<NoneElement>;
-    befores(_locator?: string): Promise<NoneElement[]>;
-    afters(_locator?: string): Promise<NoneElement[]>;
+    hover(_offsetX?: number, _offsetY?: number): Promise<NoneElement>;
+    drag(_offsetX?: number, _offsetY?: number, _duration?: number): Promise<NoneElement>;
+    drag_to(_target: any, _duration?: number): Promise<NoneElement>;
+    check(_uncheck?: boolean, _byJs?: boolean): Promise<NoneElement>;
+    remove_attr(_name: string): Promise<NoneElement>;
+    set_attr(_name: string, _value: string): Promise<NoneElement>;
+    do_click(): Promise<NoneElement>;
+    double_click(): Promise<NoneElement>;
+    right_click(): Promise<NoneElement>;
+    scroll_into_view(): Promise<NoneElement>;
+    set_file_input(_files: string | string[]): Promise<NoneElement>;
+    ele(_locator: string, _index?: number, _timeout?: number): Promise<NoneElement>;
+    eles(_locator: string, _timeout?: number): Promise<NoneElement[]>;
+    s_ele(_locator: string, _index?: number): Promise<NoneElement>;
+    s_eles(_locator: string): Promise<NoneElement[]>;
+    parent(_level?: number | string, _index?: number): Promise<NoneElement>;
+    child(_locator?: string | number, _index?: number, _eleOnly?: boolean): Promise<NoneElement>;
+    children(_locator?: string, _eleOnly?: boolean): Promise<NoneElement[]>;
+    next(_locator?: string, _index?: number, _eleOnly?: boolean): Promise<NoneElement>;
+    prev(_locator?: string, _index?: number, _eleOnly?: boolean): Promise<NoneElement>;
+    nexts(_locator?: string, _eleOnly?: boolean): Promise<NoneElement[]>;
+    prevs(_locator?: string, _eleOnly?: boolean): Promise<NoneElement[]>;
+    before(_locator?: string, _index?: number, _eleOnly?: boolean): Promise<NoneElement>;
+    after(_locator?: string, _index?: number, _eleOnly?: boolean): Promise<NoneElement>;
+    befores(_locator?: string, _eleOnly?: boolean): Promise<NoneElement[]>;
+    afters(_locator?: string, _eleOnly?: boolean): Promise<NoneElement[]>;
     shadow_root(): Promise<NoneElement>;
+    east(_locOrPixel?: string | number, _index?: number): Promise<NoneElement>;
+    south(_locOrPixel?: string | number, _index?: number): Promise<NoneElement>;
+    west(_locOrPixel?: string | number, _index?: number): Promise<NoneElement>;
+    north(_locOrPixel?: string | number, _index?: number): Promise<NoneElement>;
+    over(_timeout?: number): Promise<NoneElement>;
+    offset(_locator?: string, _x?: number, _y?: number, _timeout?: number): Promise<NoneElement>;
+    get_frame(_frameId?: string | number): Promise<NoneElement>;
     location(): Promise<{
         x: number;
         y: number;
     }>;
-    size(): Promise<{
+    get_size(): Promise<{
         width: number;
         height: number;
     }>;
@@ -74,15 +94,27 @@ export declare class NoneElement {
     }>;
     screenshot(_path?: string): Promise<Buffer>;
     get_screenshot(): Promise<Buffer>;
-    run_js(_script: string): Promise<null>;
-    run_async_js(_script: string): Promise<void>;
+    run_js(_script: string, ..._args: any[]): Promise<any>;
+    run_async_js(_script: string, ..._args: any[]): Promise<void>;
+    equals(other: any): boolean;
+    valueOf(): boolean;
+    [Symbol.toPrimitive](): boolean;
     toString(): string;
-    /**
-     * 用于判断是否为 NoneElement
-     */
     get isNone(): boolean;
+    get wait(): any;
+    get states(): any;
+    get rect(): any;
+    get scroll(): any;
+    get actions(): any;
+    get select(): any;
+    tag_name(): Promise<string>;
+    getObjectId(): Promise<string>;
+    get nodeId(): number;
+    get backendNodeId(): number;
+    get session(): any;
+    get page(): any;
+    get timeout(): number;
+    get owner(): any;
+    get parent_ele(): any;
 }
-/**
- * 判断是否为 NoneElement
- */
 export declare function isNoneElement(obj: any): obj is NoneElement;

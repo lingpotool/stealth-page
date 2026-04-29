@@ -4,6 +4,14 @@ export interface ParsedLocator {
     value: string;
     raw: string;
 }
+export interface LocatorTuple {
+    by: string;
+    value: string;
+}
+export interface LocatorDict {
+    and: boolean;
+    args: Array<[string, string | null, string | null, boolean]>;
+}
 /**
  * 解析 Drission 风格的定位字符串（完全对齐 DrissionPage 的 locator.py）
  *
@@ -26,3 +34,12 @@ export declare function parseLocator(loc: string): ParsedLocator;
  */
 declare function _quotesEscape(searchStr: string): string;
 export { _quotesEscape as quoteXPath };
+export declare function css_trans(txt: string): string;
+export declare function is_str_loc(text: string): boolean;
+export declare function is_selenium_loc(loc: unknown): loc is [string, string];
+export declare function get_loc(loc: string | [string, string], translate_css?: boolean, css_mode?: boolean): LocatorTuple;
+export declare function str_to_xpath_loc(loc: string): LocatorTuple;
+export declare function str_to_css_loc(loc: string): LocatorTuple;
+export declare function translate_loc(loc: [string, string]): LocatorTuple;
+export declare function translate_css_loc(loc: [string, string]): LocatorTuple;
+export declare function locator_to_tuple(loc: string): LocatorDict;

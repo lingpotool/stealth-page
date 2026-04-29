@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.PageScrollSetter = exports.LoadMode = exports.BrowserStates = exports.BrowserWaiter = exports.BrowserCookiesSetter = exports.BrowserSetter = exports.SessionPageSetter = exports.ShadowRootStates = exports.FrameStates = exports.Pseudo = exports.WindowSetter = exports.PageCookiesSetter = exports.CookiesSetter = exports.ScreencastModeSetter = exports.Screencast = exports.Console = exports.PageRect = exports.PageStates = exports.PageScroller = exports.SelectElement = exports.ElementStates = exports.ElementRect = exports.ElementSetter = exports.ElementWaiter = exports.FrameScroller = exports.ElementClicker = exports.ElementScroller = void 0;
+exports.PageScrollSetter = exports.LoadMode = exports.BrowserStates = exports.BrowserWaiter = exports.MixTabWaiter = exports.MixTabSetter = exports.WebPageWaiter = exports.WebPageSetter = exports.MixTabCookiesSetter = exports.WebPageCookiesSetter = exports.SessionCookiesSetter = exports.BrowserCookiesSetter = exports.BrowserSetter = exports.SessionPageSetter = exports.ShadowRootStates = exports.ChromiumFrameSetter = exports.FrameWaiter = exports.FrameStates = exports.Pseudo = exports.WindowSetter = exports.PageCookiesSetter = exports.CookiesSetter = exports.ScreencastModeSetter = exports.Screencast = exports.Console = exports.PageRect = exports.PageStates = exports.PageScroller = exports.SelectElement = exports.ElementStates = exports.ElementRect = exports.ElementSetter = exports.ElementWaiter = exports.FrameScroller = exports.ElementClicker = exports.ElementScroller = void 0;
 var ElementScroller_1 = require("./ElementScroller");
 Object.defineProperty(exports, "ElementScroller", { enumerable: true, get: function () { return ElementScroller_1.ElementScroller; } });
 var ElementClicker_1 = require("./ElementClicker");
@@ -38,6 +38,10 @@ Object.defineProperty(exports, "Pseudo", { enumerable: true, get: function () { 
 // Frame 相关
 var FrameStates_1 = require("./FrameStates");
 Object.defineProperty(exports, "FrameStates", { enumerable: true, get: function () { return FrameStates_1.FrameStates; } });
+var FrameWaiter_1 = require("./FrameWaiter");
+Object.defineProperty(exports, "FrameWaiter", { enumerable: true, get: function () { return FrameWaiter_1.FrameWaiter; } });
+var ChromiumFrameSetter_1 = require("./ChromiumFrameSetter");
+Object.defineProperty(exports, "ChromiumFrameSetter", { enumerable: true, get: function () { return ChromiumFrameSetter_1.ChromiumFrameSetter; } });
 var ShadowRootStates_1 = require("./ShadowRootStates");
 Object.defineProperty(exports, "ShadowRootStates", { enumerable: true, get: function () { return ShadowRootStates_1.ShadowRootStates; } });
 // Session 相关
@@ -48,6 +52,20 @@ var BrowserSetter_1 = require("./BrowserSetter");
 Object.defineProperty(exports, "BrowserSetter", { enumerable: true, get: function () { return BrowserSetter_1.BrowserSetter; } });
 var BrowserCookiesSetter_1 = require("./BrowserCookiesSetter");
 Object.defineProperty(exports, "BrowserCookiesSetter", { enumerable: true, get: function () { return BrowserCookiesSetter_1.BrowserCookiesSetter; } });
+var SessionCookiesSetter_1 = require("./SessionCookiesSetter");
+Object.defineProperty(exports, "SessionCookiesSetter", { enumerable: true, get: function () { return SessionCookiesSetter_1.SessionCookiesSetter; } });
+var WebPageCookiesSetter_1 = require("./WebPageCookiesSetter");
+Object.defineProperty(exports, "WebPageCookiesSetter", { enumerable: true, get: function () { return WebPageCookiesSetter_1.WebPageCookiesSetter; } });
+var MixTabCookiesSetter_1 = require("./MixTabCookiesSetter");
+Object.defineProperty(exports, "MixTabCookiesSetter", { enumerable: true, get: function () { return MixTabCookiesSetter_1.MixTabCookiesSetter; } });
+var WebPageSetter_1 = require("./WebPageSetter");
+Object.defineProperty(exports, "WebPageSetter", { enumerable: true, get: function () { return WebPageSetter_1.WebPageSetter; } });
+var WebPageWaiter_1 = require("./WebPageWaiter");
+Object.defineProperty(exports, "WebPageWaiter", { enumerable: true, get: function () { return WebPageWaiter_1.WebPageWaiter; } });
+var MixTabSetter_1 = require("./MixTabSetter");
+Object.defineProperty(exports, "MixTabSetter", { enumerable: true, get: function () { return MixTabSetter_1.MixTabSetter; } });
+var MixTabWaiter_1 = require("./MixTabWaiter");
+Object.defineProperty(exports, "MixTabWaiter", { enumerable: true, get: function () { return MixTabWaiter_1.MixTabWaiter; } });
 var BrowserWaiter_1 = require("./BrowserWaiter");
 Object.defineProperty(exports, "BrowserWaiter", { enumerable: true, get: function () { return BrowserWaiter_1.BrowserWaiter; } });
 var BrowserStates_1 = require("./BrowserStates");

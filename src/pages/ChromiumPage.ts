@@ -122,9 +122,17 @@ export class ChromiumPage extends ChromiumBase {
     return this._browser.options.address;
   }
 
-  async latest_tab(): Promise<string | null> {
+  async browser_version(): Promise<string> {
+    return this._browser.version();
+  }
+
+  async latest_tab(): Promise<ChromiumTab | null> {
     const tabs = await this.get_tabs();
-    return tabs.length > 0 ? tabs[tabs.length - 1].id : null;
+    if (tabs.length === 0) return null;
+    const lastTab = tabs[tabs.length - 1];
+    const tab = new ChromiumTab(this._browser, lastTab.id);
+    await tab.init();
+    return tab;
   }
 
   async close_tabs(tabIds: string | string[], others: boolean = false): Promise<void> {
@@ -146,5 +154,9 @@ export class ChromiumPage extends ChromiumBase {
     } catch {
       return null;
     }
+  }
+
+  _on_disconnect(): void {
+    this._page = null;
   }
 }

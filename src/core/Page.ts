@@ -125,6 +125,7 @@ export class Page {
   private _target_id: string = '';
   private _js_ready_state: string = 'loading';
   _has_alert: boolean = false;
+  _alert_text: string = '';
   private _browser: any = null;
   private _timeout: any = null;
   private _load_mode_str: string = 'normal';
@@ -542,6 +543,13 @@ export class Page {
     }
 
     this._setupNetworkIdleTracking();
+    this._initAlert();
+  }
+
+  private _initAlert(): void {
+    if (!this._alert) {
+      this._alert = new Alert(this);
+    }
   }
 
   private _setupNetworkIdleTracking(): void {
@@ -1028,14 +1036,7 @@ export class Page {
 
     if (!this._has_alert) return false;
 
-    let resText = '';
-    try {
-      const { result } = await this.session.send<{ result: { value: string } }>("Runtime.evaluate", {
-        expression: "document.querySelector('*')?.textContent || ''",
-        returnByValue: true,
-      });
-      resText = result.value || '';
-    } catch {}
+    const resText = this._alert_text || '';
 
     if (typeof accept !== 'boolean') {
       return resText;

@@ -18,6 +18,7 @@ export declare class BrowserStates {
      * 返回是否为隐身模式
      */
     get is_incognito(): boolean;
+    get is_existed(): boolean;
     /**
      * 返回标签页数量
      */

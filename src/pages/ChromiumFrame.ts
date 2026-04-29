@@ -98,6 +98,14 @@ export class ChromiumFrame {
     return this._frameEle;
   }
 
+  get owner(): any {
+    return this._frameEle;
+  }
+
+  get tab(): any {
+    return this._frameEle;
+  }
+
   get tab_id(): string {
     return this._tab_id;
   }
@@ -335,6 +343,27 @@ export class ChromiumFrame {
     return result.value;
   }
 
+  async _run_js(script: string, ...args: any[]): Promise<any> {
+    return this.run_js(script, ...args);
+  }
+
+  async js_ready_state(): Promise<string> {
+    try {
+      const { result } = await this.session.send<{ result: { value: string } }>("Runtime.evaluate", {
+        expression: "document.readyState",
+        contextId: this._contextId || undefined,
+        returnByValue: true,
+      });
+      return result.value || 'unknown';
+    } catch {
+      return 'unknown';
+    }
+  }
+
+  get _js_ready_state(): Promise<string> {
+    return this.js_ready_state();
+  }
+
   async run_async_js(script: string, ...args: any[]): Promise<void> {
     await this.session.send("Runtime.evaluate", {
       expression: `(function() { ${script} })()`,
@@ -372,6 +401,57 @@ export class ChromiumFrame {
       }
     }
     return this._frameEle.screenshot(path);
+  }
+
+  async _get_screenshot(
+    path?: string,
+    name?: string,
+    asBytes?: boolean | 'jpg' | 'jpeg' | 'png' | 'webp',
+    asBase64?: boolean | 'jpg' | 'jpeg' | 'png' | 'webp',
+    fullPage: boolean = false,
+    leftTop?: [number, number],
+    rightBottom?: [number, number],
+    ele?: Element
+  ): Promise<string | Buffer> {
+    return this.get_screenshot(path, name);
+  }
+
+  async _find_elements(
+    locator: string | Element,
+    timeout: number,
+    index?: number,
+    relative: boolean = false,
+    raiseErr?: boolean
+  ): Promise<Element | NoneElement | Element[]> {
+    if (locator instanceof Element) return locator;
+    if (index === undefined || index === null) {
+      return this.eles(locator);
+    }
+    if (index === 1) {
+      const el = await this.ele(locator, timeout);
+      if (el instanceof NoneElement) {
+        if (raiseErr ?? Settings.raise_when_ele_not_found) {
+          const { ElementNotFoundError } = await import("../errors");
+          throw new ElementNotFoundError(locator);
+        }
+      }
+      return el;
+    }
+    const all = await this.eles(locator);
+    const idx = index > 0 ? index - 1 : all.length + index;
+    const result = all[idx] ?? null;
+    if (!result) {
+      if (raiseErr ?? Settings.raise_when_ele_not_found) {
+        const { ElementNotFoundError } = await import("../errors");
+        throw new ElementNotFoundError(locator);
+      }
+      return new NoneElement("ele", { locator, index });
+    }
+    return result;
+  }
+
+  _is_inner_frame(): boolean {
+    return !this._is_cross_origin;
   }
 
   async property(name: string): Promise<any> {

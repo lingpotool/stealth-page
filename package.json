@@ -1,7 +1,7 @@
 {
   "name": "stealth-page",
-  "version": "0.1.0",
-  "description": "Stealthy browser automation library inspired by DrissionPage. Anti-detection, simple API, TypeScript support.",
+  "version": "1.0.0",
+  "description": "Stealthy browser automation library aligned with DrissionPage v4.1.1.2 API. Anti-detection, TypeScript support, CDP-based.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {

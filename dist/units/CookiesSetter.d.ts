@@ -39,7 +39,7 @@ export declare class CookiesSetter {
     /**
      * 解析各种格式的 cookie 输入
      */
-    private _parseCookies;
+    protected _parseCookies(cookies: CookieData | CookieData[] | string | Record<string, string>): CookieData[];
 }
 /**
  * 页面级别的 Cookie 设置类

@@ -1,6 +1,6 @@
 export { ElementScroller, ScrollableElement } from "./ElementScroller";
 export { ElementClicker, ClickableElement, ClickableElementWithPage } from "./ElementClicker";
-export { FrameScroller, ScrollableFrame } from "./FrameScroller";
+export { FrameScroller } from "./FrameScroller";
 export { ElementWaiter, WaitableElement } from "./ElementWaiter";
 export { ElementSetter, SettableElement } from "./ElementSetter";
 export { ElementRect, RectableElement } from "./ElementRect";
@@ -15,10 +15,19 @@ export { CookiesSetter, PageCookiesSetter, CookieData, CookiesPage } from "./Coo
 export { WindowSetter, WindowBounds, WindowPage } from "./WindowSetter";
 export { Pseudo, PseudoElement } from "./Pseudo";
 export { FrameStates, FrameLike } from "./FrameStates";
+export { FrameWaiter } from "./FrameWaiter";
+export { ChromiumFrameSetter } from "./ChromiumFrameSetter";
 export { ShadowRootStates, ShadowRootLike } from "./ShadowRootStates";
 export { SessionPageSetter } from "./SessionPageSetter";
 export { BrowserSetter } from "./BrowserSetter";
 export { BrowserCookiesSetter, BrowserCookieData } from "./BrowserCookiesSetter";
+export { SessionCookiesSetter } from "./SessionCookiesSetter";
+export { WebPageCookiesSetter } from "./WebPageCookiesSetter";
+export { MixTabCookiesSetter } from "./MixTabCookiesSetter";
+export { WebPageSetter } from "./WebPageSetter";
+export { WebPageWaiter } from "./WebPageWaiter";
+export { MixTabSetter } from "./MixTabSetter";
+export { MixTabWaiter } from "./MixTabWaiter";
 export { BrowserWaiter } from "./BrowserWaiter";
 export { BrowserStates } from "./BrowserStates";
 export { LoadMode, LoadModeValue } from "./LoadMode";

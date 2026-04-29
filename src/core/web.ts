@@ -212,6 +212,21 @@ export function is_js_func(func: string): boolean {
   return false;
 }
 
+export async function get_blob(page: PageLike, url: string, asBytes: boolean = true): Promise<Buffer | string> {
+  const js = asBytes
+    ? `(async () => { const r = await fetch(${JSON.stringify(url)}); const b = await r.arrayBuffer(); return Array.from(new Uint8Array(b)); })()`
+    : `(async () => { const r = await fetch(${JSON.stringify(url)}); return await r.text(); })()`;
+  const result = await page.run_cdp('Runtime.evaluate', {
+    expression: js,
+    returnByValue: true,
+    awaitPromise: true,
+  });
+  if (asBytes && Array.isArray(result.result?.value)) {
+    return Buffer.from(result.result.value);
+  }
+  return result.result?.value || '';
+}
+
 export async function get_mhtml(page: PageLike, filePath?: string, name?: string): Promise<string> {
   const result = await page.run_cdp('Page.captureSnapshot', { format: 'mhtml' });
   const data = result.data;

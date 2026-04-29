@@ -4,6 +4,7 @@ import { Settings } from "../core/Settings";
 export interface AlertPage {
   cdpSession: CDPSession;
   _has_alert?: boolean;
+  _alert_text?: string;
 }
 
 export class Alert {
@@ -35,6 +36,9 @@ export class Alert {
       if (this._owner._has_alert !== undefined) {
         this._owner._has_alert = true;
       }
+      if (this._owner._alert_text !== undefined) {
+        this._owner._alert_text = params.message || '';
+      }
 
       if (this._auto !== null) {
         if (this._auto !== 'close') {
@@ -58,6 +62,9 @@ export class Alert {
       this._responseText = params?.userInput ?? null;
       if (this._owner._has_alert !== undefined) {
         this._owner._has_alert = false;
+      }
+      if (this._owner._alert_text !== undefined) {
+        this._owner._alert_text = '';
       }
     });
   }

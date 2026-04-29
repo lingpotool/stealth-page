@@ -47,11 +47,11 @@ export class Actions {
 
     if (Array.isArray(eleOrLoc)) {
       isLoc = true;
-      const lx = eleOrLoc[0] + ox;
-      const ly = eleOrLoc[1] + oy;
+      const lx = Number(eleOrLoc[0]) + ox;
+      const ly = Number(eleOrLoc[1]) + oy;
       const [clientX, clientY] = await location_to_client(this._owner, lx, ly);
-      cx = clientX;
-      cy = clientY;
+      cx = Number(clientX) || lx;
+      cy = Number(clientY) || ly;
     } else if (typeof eleOrLoc === 'string' || (eleOrLoc as ActionsElement)._type === 'ChromiumElement') {
       const ele = typeof eleOrLoc === 'string' ? await this._owner.ele(eleOrLoc) : eleOrLoc;
       if (this._owner.scroll) {
@@ -88,13 +88,13 @@ export class Actions {
       const t = Date.now();
       this.curr_x = x;
       this.curr_y = y;
-      await this._owner.run_cdp('Input.dispatchMouseEvent', {
+      const params: Record<string, any> = {
         type: 'mouseMoved',
-        button: this._holding,
-        x: this.curr_x,
-        y: this.curr_y,
-        modifiers: this.modifier,
-      });
+        x: Number(x),
+        y: Number(y),
+      };
+      if (this.modifier) params.modifiers = this.modifier;
+      await this._owner.run_cdp('Input.dispatchMouseEvent', params);
       const elapsed = Date.now() - t;
       const sleepMs = 20 - elapsed;
       if (sleepMs > 0) {
@@ -363,8 +363,8 @@ export class Actions {
 
 export async function location_to_client(page: ActionsPage, lx: number, ly: number): Promise<[number, number]> {
   try {
-    const scrollX = await page._run_js('return document.documentElement.scrollLeft;');
-    const scrollY = await page._run_js('return document.documentElement.scrollTop;');
+    const scrollX = Number(await page._run_js('return document.documentElement.scrollLeft;')) || 0;
+    const scrollY = Number(await page._run_js('return document.documentElement.scrollTop;')) || 0;
     return [lx - scrollX, ly - scrollY];
   } catch {
     return [lx, ly];

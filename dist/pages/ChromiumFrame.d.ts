@@ -1,21 +1,18 @@
 import { CDPSession } from "../core/CDPSession";
 import { Element } from "../core/Element";
+import { NoneElement } from "../core/NoneElement";
 import { FrameScroller } from "../units/FrameScroller";
 import { FrameStates } from "../units/FrameStates";
+import { FrameWaiter } from "../units/FrameWaiter";
+import { FrameListener } from "../units/Listener";
+import { ChromiumFrameSetter } from "../units/ChromiumFrameSetter";
 import { PageRect } from "../units/PageRect";
-/**
- * Frame 信息接口
- */
 export interface FrameInfo {
     id: string;
     url: string;
     name: string;
     parentId?: string;
 }
-/**
- * ChromiumFrame 类，对应 DrissionPage 的 ChromiumFrame
- * 用于处理 iframe 内的操作
- */
 export declare class ChromiumFrame {
     private readonly _session;
     private readonly _frameId;
@@ -23,104 +20,82 @@ export declare class ChromiumFrame {
     private _documentNodeId;
     private _scroller;
     private _states;
+    private _waiter;
+    private _setter;
+    private _listener;
     private _rect;
+    private _contextId;
+    private _is_cross_origin;
+    private _isolated_session;
+    private _tab_id;
+    private _load_mode;
     constructor(session: CDPSession, frameId: string, frameEle: Element);
-    /**
-     * 获取 frame 的 CDP session
-     */
+    private _initContextListener;
     get session(): CDPSession;
-    /**
-     * 获取 cdpSession（兼容 ScrollablePage 接口）
-     */
     get cdpSession(): CDPSession;
-    /**
-     * 获取 frame ID
-     */
     get frameId(): string;
-    /**
-     * 获取 frame 元素
-     */
     get frame_ele(): Element;
-    /**
-     * 滚动操作对象
-     */
+    get owner(): any;
+    get tab(): any;
+    get tab_id(): string;
+    set tab_id(value: string);
+    get is_cross_origin(): boolean;
+    get load_mode(): string;
+    set load_mode(value: string);
     get scroll(): FrameScroller;
-    /**
-     * 状态检查对象
-     */
     get states(): FrameStates;
-    /**
-     * 位置信息对象
-     */
+    get wait(): FrameWaiter;
+    get set(): ChromiumFrameSetter;
+    get listen(): FrameListener;
+    active_ele(): Promise<Element | null>;
     get rect(): PageRect;
-    /**
-     * 获取 frame 的 URL
-     */
     url(): Promise<string>;
-    /**
-     * 获取 frame 的 title
-     */
     title(): Promise<string>;
-    /**
-     * 获取 frame 的 HTML
-     */
     html(): Promise<string>;
-    /**
-     * 获取 frame 的 innerHTML
-     */
     inner_html(): Promise<string>;
-    /**
-     * 获取 frame 的标签名
-     */
     tag(): Promise<string>;
-    /**
-     * 获取 frame 元素的属性
-     */
     attr(name: string): Promise<string | null>;
-    /**
-     * 获取 frame 元素的所有属性
-     */
     attrs(): Promise<Record<string, string>>;
-    /**
-     * 刷新 frame
-     */
     refresh(): Promise<void>;
-    /**
-     * 在 frame 内查找单个元素
-     */
-    ele(locator: string, index?: number): Promise<Element | null>;
-    /**
-     * 在 frame 内查找所有元素
-     */
+    _reload(): Promise<void>;
+    _get_document(timeout?: number): Promise<number>;
+    ele(locator: string, timeout?: number): Promise<Element | NoneElement>;
     eles(locator: string): Promise<Element[]>;
-    private _elesByXPath;
-    /**
-     * 在 frame 内执行 JS
-     */
     run_js(script: string, ...args: any[]): Promise<any>;
-    /**
-     * 异步执行 JS
-     */
+    _run_js(script: string, ...args: any[]): Promise<any>;
+    js_ready_state(): Promise<string>;
+    get _js_ready_state(): Promise<string>;
     run_async_js(script: string, ...args: any[]): Promise<void>;
-    /**
-     * 截图
-     */
+    run_js_loaded(script: string, ...args: any[]): Promise<any>;
     screenshot(path?: string): Promise<Buffer>;
-    /**
-     * 获取 frame 的执行上下文 ID
-     */
-    private _getContextId;
-    /**
-     * 获取 frame 的 document 节点 ID
-     */
-    private _getDocumentNodeId;
-    parent(level?: number): Promise<Element | null>;
-    prev(locator?: string, index?: number): Promise<Element | null>;
-    next(locator?: string, index?: number): Promise<Element | null>;
+    get_screenshot(path?: string, name?: string): Promise<Buffer>;
+    _get_screenshot(path?: string, name?: string, asBytes?: boolean | 'jpg' | 'jpeg' | 'png' | 'webp', asBase64?: boolean | 'jpg' | 'jpeg' | 'png' | 'webp', fullPage?: boolean, leftTop?: [number, number], rightBottom?: [number, number], ele?: Element): Promise<string | Buffer>;
+    _find_elements(locator: string | Element, timeout: number, index?: number, relative?: boolean, raiseErr?: boolean): Promise<Element | NoneElement | Element[]>;
+    _is_inner_frame(): boolean;
+    property(name: string): Promise<any>;
+    style(name: string, pseudoEle?: string): Promise<string>;
+    set_load_mode(mode: string): Promise<void>;
+    private _wait_loaded;
+    parent(level?: number): Promise<Element | NoneElement>;
+    prev(locator?: string, index?: number): Promise<Element | NoneElement>;
+    next(locator?: string, index?: number): Promise<Element | NoneElement>;
     prevs(locator?: string): Promise<Element[]>;
     nexts(locator?: string): Promise<Element[]>;
-    before(locator?: string, index?: number): Promise<Element | null>;
-    after(locator?: string, index?: number): Promise<Element | null>;
+    before(locator?: string, index?: number): Promise<Element | NoneElement>;
+    after(locator?: string, index?: number): Promise<Element | NoneElement>;
     befores(locator?: string): Promise<Element[]>;
     afters(locator?: string): Promise<Element[]>;
+    _run_cdp(method: string, params?: Record<string, any>): Promise<any>;
+    s_ele(locator: string, index?: number): Promise<Element | NoneElement>;
+    s_eles(locator: string): Promise<Element[]>;
+    remove_attr(name: string): Promise<void>;
+    children(locator?: string, timeout?: number): Promise<Element[]>;
+    link(): Promise<string>;
+    xpath(): Promise<string>;
+    css_path(): Promise<string>;
+    child_count(): Promise<number>;
+    shadow_root(): Promise<any>;
+    sr(): Promise<any>;
+    get download_path(): string;
+    get doc_ele(): Element;
 }

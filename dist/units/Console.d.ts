@@ -6,6 +6,7 @@ export interface ConsoleData {
     source: string;
     level: string;
     text: string;
+    body?: any;
     url?: string;
     line?: number;
     column?: number;

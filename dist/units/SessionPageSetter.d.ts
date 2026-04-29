@@ -1,4 +1,5 @@
 import { SessionPage } from "../pages/SessionPage";
+import { SessionCookiesSetter } from "./SessionCookiesSetter";
 /**
  * SessionPage 设置类
  * 对应 DrissionPage.SessionPageSetter
@@ -6,9 +7,7 @@ import { SessionPage } from "../pages/SessionPage";
 export declare class SessionPageSetter {
     private readonly _owner;
     constructor(owner: SessionPage);
-    /**
-     * 设置下载路径
-     */
+    get cookies(): SessionCookiesSetter;
     download_path(path: string | null): void;
     /**
      * 设置连接超时时间
@@ -54,4 +53,11 @@ export declare class SessionPageSetter {
      * 设置最大重定向次数
      */
     max_redirects(times: number | null): void;
+    auth(auth: string | [string, string] | Record<string, string>): void;
+    hooks(hooks: Record<string, Function>): void;
+    params(params: Record<string, string>): void;
+    cert(cert: string | Record<string, string>): void;
+    stream(onOff: boolean): void;
+    trust_env(onOff: boolean): void;
+    add_adapter(url: string, adapter: any): void;
 }
