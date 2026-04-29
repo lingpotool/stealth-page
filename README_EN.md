@@ -559,12 +559,12 @@ Test coverage:
 
 ## Known Limitations
 
-Features not yet fully implemented or tested:
+Features not yet fully implemented:
 
-- **Runtime proxy switching** — Via CDP `Fetch.enable`
-- **Proxy authentication** — Proxies with username/password
-- **Auto-launch browser** — Requires manual Chrome process launch
-- **SessionPage HTTP requests** — Actual HTTP request capability in HTTP mode
+- **Runtime proxy switching** — Requires CDP `Fetch.enable` for dynamic proxy switching
+- **Auto-launch browser process** — `ChromiumOptions` supports configuration, but Chrome process needs to be launched manually
+
+> Note: Proxy authentication feature does not exist in DrissionPage Python version either.
 
 ## License
 

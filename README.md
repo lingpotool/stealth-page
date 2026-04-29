@@ -559,12 +559,12 @@ node examples/real-test.js
 
 ## 已知限制
 
-以下功能尚未完全实现或测试：
+以下功能尚未完全实现：
 
-- **运行时代理切换** — 通过 CDP `Fetch.enable` 实现
-- **代理认证** — 带用户名密码的代理
-- **自动启动浏览器** — 需手动启动 Chrome 进程
-- **SessionPage HTTP 请求** — HTTP 模式下的实际请求能力
+- **运行时代理切换** — 需要通过 CDP `Fetch.enable` 实现动态代理切换
+- **自动启动浏览器进程** — `ChromiumOptions` 支持配置，但需要手动启动 Chrome 进程
+
+> 注：代理认证功能在 DrissionPage Python 版本中也不存在。
 
 ## License
 
