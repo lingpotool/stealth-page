@@ -42,7 +42,7 @@ export declare abstract class ChromiumBase {
     get _target_id(): string;
     get _browser_url(): string;
     get set(): ChromiumPageSetter;
-    get wait(): ChromiumPageWaiter;
+    get wait(): ChromiumPageWaiter & ((second: number, scope?: number) => Promise<ChromiumBase>);
     get actions(): ChromiumPageActions;
     get listen(): ChromiumPageListener;
     get download(): ChromiumPageDownloader;

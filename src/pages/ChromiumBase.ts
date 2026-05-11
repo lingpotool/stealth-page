@@ -69,11 +69,22 @@ export abstract class ChromiumBase {
     return this._setter;
   }
 
-  get wait(): ChromiumPageWaiter {
+  get wait(): ChromiumPageWaiter & ((second: number, scope?: number) => Promise<ChromiumBase>) {
     if (!this._waiter) {
       this._waiter = new ChromiumPageWaiter(this as any);
     }
-    return this._waiter;
+    const waiter = this._waiter;
+    const callable = async (second: number, scope?: number) => {
+      return waiter.wait(second, scope);
+    };
+    Object.setPrototypeOf(callable, Object.getPrototypeOf(waiter));
+    Object.assign(callable, waiter);
+    for (const key of Object.getOwnPropertyNames(Object.getPrototypeOf(waiter))) {
+      if (key !== 'constructor' && typeof (waiter as any)[key] === 'function') {
+        (callable as any)[key] = (waiter as any)[key].bind(waiter);
+      }
+    }
+    return callable as any;
   }
 
   get actions(): ChromiumPageActions {

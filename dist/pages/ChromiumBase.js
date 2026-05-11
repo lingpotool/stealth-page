@@ -96,7 +96,18 @@ class ChromiumBase {
         if (!this._waiter) {
             this._waiter = new ChromiumPageWaiter_1.ChromiumPageWaiter(this);
         }
-        return this._waiter;
+        const waiter = this._waiter;
+        const callable = async (second, scope) => {
+            return waiter.wait(second, scope);
+        };
+        Object.setPrototypeOf(callable, Object.getPrototypeOf(waiter));
+        Object.assign(callable, waiter);
+        for (const key of Object.getOwnPropertyNames(Object.getPrototypeOf(waiter))) {
+            if (key !== 'constructor' && typeof waiter[key] === 'function') {
+                callable[key] = waiter[key].bind(waiter);
+            }
+        }
+        return callable;
     }
     get actions() {
         if (!this._actions) {
