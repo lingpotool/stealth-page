@@ -738,8 +738,9 @@ class Page {
         return results;
     }
     async eles(locator) {
+        await this.session.send("DOM.getDocument", { depth: -1 }).catch(() => { });
         const parsed = (0, locator_1.parseLocator)(locator);
-        const query = parsed.type === 'css' ? parsed.value : `xpath=${parsed.value}`;
+        const query = parsed.value;
         try {
             const { searchId, resultCount } = await this.session.send("DOM.performSearch", {
                 query,
