@@ -582,7 +582,7 @@ class ChromiumBase {
             const frameInfo = frames[idx];
             if (!frameInfo)
                 return null;
-            const iframes = await this.eles("iframe, frame");
+            const iframes = await this.eles("css:iframe, frame");
             const frameEle = iframes[idx];
             if (!frameEle)
                 return null;
@@ -868,7 +868,7 @@ class ChromiumBase {
             parentEle = found instanceof NoneElement_1.NoneElement ? null : found;
         }
         if (!parentEle) {
-            const body = await this.ele("body");
+            const body = await this.ele("css:body");
             parentEle = body instanceof NoneElement_1.NoneElement ? null : body;
         }
         if (!parentEle || parentEle instanceof NoneElement_1.NoneElement)

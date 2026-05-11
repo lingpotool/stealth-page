@@ -644,7 +644,7 @@ export abstract class ChromiumBase {
       const idx = locIndEle > 0 ? locIndEle - 1 : frames.length + locIndEle;
       const frameInfo = frames[idx];
       if (!frameInfo) return null;
-      const iframes = await this.eles("iframe, frame");
+      const iframes = await this.eles("css:iframe, frame");
       const frameEle = iframes[idx];
       if (!frameEle) return null;
       return new ChromiumFrame(this._page!.cdpSession, frameInfo.id, frameEle);
@@ -932,7 +932,7 @@ export abstract class ChromiumBase {
       parentEle = found instanceof NoneElement ? null : found;
     }
     if (!parentEle) {
-      const body = await this.ele("body");
+      const body = await this.ele("css:body");
       parentEle = body instanceof NoneElement ? null : body;
     }
     if (!parentEle || parentEle instanceof NoneElement) return null;

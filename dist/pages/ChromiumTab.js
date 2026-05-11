@@ -41,7 +41,7 @@ class ChromiumTab extends ChromiumBase_1.ChromiumBase {
         if (locator) {
             return this.eles(locator);
         }
-        return this.eles("iframe, frame");
+        return this.eles("css:iframe, frame");
     }
     _on_disconnect() {
         this._page = null;

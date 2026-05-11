@@ -120,10 +120,10 @@ main();
 Aligned with DrissionPage's locator system:
 
 ```javascript
-// CSS selectors (default)
+// .# prefix auto-detects as CSS; other plain strings default to text search
 await page.ele('#id')
 await page.ele('.class')
-await page.ele('div.container')
+await page.ele('css:div.container')
 
 // Explicit CSS prefix
 await page.ele('css:#id .class')

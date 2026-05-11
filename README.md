@@ -120,10 +120,10 @@ main();
 对齐 DrissionPage 的定位符系统：
 
 ```javascript
-// CSS 选择器（默认）
+// .# 前缀自动识别为 CSS，其他纯字符串默认为文本搜索
 await page.ele('#id')
 await page.ele('.class')
-await page.ele('div.container')
+await page.ele('css:div.container')
 
 // 显式 CSS 前缀
 await page.ele('css:#id .class')
